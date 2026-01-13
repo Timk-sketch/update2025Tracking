@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: Arial, sans-serif; padding: 10px; margin: 0; }
+      .row { margin: 8px 0; }
+      label { display:block; font-size:12px; margin-bottom:4px; color:#333; font-weight:600; }
+      input, select, button { width:100%; padding:8px; box-sizing:border-box; font-size:13px; }
+      button { cursor:pointer; background:#4285f4; color:#fff; border:none; border-radius:4px; font-weight:600; }
+      button:hover { background:#3367d6; }
+      button:disabled { background:#9aa0a6; cursor:not-allowed; }
+      .btn-secondary { background:#34a853; }
+      .btn-secondary:hover { background:#2d9249; }
+      .btn-warning { background:#fbbc04; color:#333; }
+      .btn-warning:hover { background:#f9ab00; }
+      .status {
+        margin-top:10px; padding:8px; border:1px solid #ddd; background:#fafafa;
+        height:240px; overflow:auto; font-size:11px; font-family: "Courier New", monospace;
+        white-space: pre-wrap; border-radius:4px;
+      }
+      .muted { color:#666; font-size:11px; margin-bottom:10px; }
+      h3 { margin:0 0 8px 0; color:#202124; }
+      hr { border:none; border-top:1px solid #dadce0; margin:12px 0; }
+      .section-title { font-size:11px; text-transform:uppercase; color:#5f6368; font-weight:700; margin:12px 0 8px 0; }
+      .two-col { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+      .pill {
+        display:inline-block; padding:2px 6px; border-radius:999px;
+        background:#e8f0fe; color:#1a73e8; font-size:10px; font-weight:700;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>Order Tools <span class="pill" id="conn">connecting…</span></h3>
+    <div class="muted">Pick a date range, set marketing + outreach controls, then run Summary + Outreach.</div>
+
+    <div class="section-title">Date Range</div>
+
+    <div class="row">
+      <label>Preset Range</label>
+      <select id="preset">
+        <option value="custom">Custom (use dates below)</option>
+        <option value="today">Today</option>
+        <option value="yesterday">Yesterday</option>
+        <option value="last7" selected>Last 7 days</option>
+        <option value="last30">Last 30 days</option>
+        <option value="monthToDate">Month to date</option>
+        <option value="yearToDate">Year to date</option>
+      </select>
+    </div>
+
+    <div class="two-col">
+      <div class="row">
+        <label>Start Date</label>
+        <input id="start" type="date">
+      </div>
+      <div class="row">
+        <label>End Date</label>
+        <input id="end" type="date">
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="btn-warning" id="btnSetRange" onclick="setRange()">Set Report Date Range</button>
+    </div>
+
+    <hr>
+
+    <div class="section-title">Marketing Controls (used in Summary)</div>
+
+    <div class="row">
+      <label>Marketing Spend ($)</label>
+      <input id="marketingSpend" type="number" step="1" min="0" placeholder="e.g. 750000">
+    </div>
+
+    <div class="two-col">
+      <div class="row">
+        <label>Contribution Margin (%)</label>
+        <!-- WHOLE number now: 60 means 60% -->
+        <input id="contributionMarginPct" type="number" step="1" min="0" max="100" placeholder="e.g. 60">
+      </div>
+      <div class="row">
+        <label>Target Spend % of Revenue</label>
+        <!-- WHOLE number now: 15 means 15% -->
+        <input id="targetSpendPct" type="number" step="1" min="0" max="100" placeholder="e.g. 15">
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="btn-warning" id="btnSaveMarketing" onclick="saveMarketingControls()">Save Marketing Controls</button>
+    </div>
+
+    <hr>
+
+    <div class="section-title">Outreach Controls</div>
+
+    <div class="two-col">
+      <div class="row">
+        <label>LTV Threshold (Good Customer)</label>
+        <input id="ltvThreshold" type="number" step="1" min="0">
+      </div>
+      <div class="row">
+        <label>Aggressiveness Multiplier</label>
+        <input id="aggressiveness" type="number" step="0.01" min="1">
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="row">
+        <label>Max Days Since Last Order</label>
+        <input id="maxDays" type="number" step="1" min="1">
+      </div>
+      <div class="row">
+        <label>Min Total Orders</label>
+        <input id="minOrders" type="number" step="1" min="1">
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Min LTV (Optional override)</label>
+      <input id="minLtvOverride" type="number" step="1" min="0" placeholder="leave blank to use LTV Threshold">
+    </div>
+
+    <div class="row">
+      <button class="btn-warning" id="btnSaveOutreach" onclick="saveOutreachControls()">Save Outreach Controls</button>
+    </div>
+
+    <hr>
+
+    <div class="section-title">Individual Steps</div>
+
+    <div class="row"><button id="b1" onclick="runFn('importShopifyOrders')">1) Import Shopify Orders</button></div>
+    <div class="row"><button id="b2" onclick="runFn('importSquarespaceOrders')">2) Import Squarespace Orders</button></div>
+    <div class="row"><button id="b3" onclick="runFn('deduplicateAllOrders')">3) Deduplicate All Orders</button></div>
+    <div class="row"><button id="b4" onclick="runFn('buildAllOrdersClean')">4) Build Clean Master (All_Orders_Clean)</button></div>
+
+    <div class="row">
+      <button id="b5" onclick="runBuildSummary()">5) Build Orders Summary Report</button>
+    </div>
+
+    <div class="row">
+      <button id="b6" onclick="runFn('buildCustomerOutreachList')">6) Build Customer Outreach List</button>
+    </div>
+
+    <hr>
+
+    <div class="section-title">Full Pipeline</div>
+    <div class="row">
+      <button class="btn-secondary" id="btnFull" onclick="runFull()">Run Full Pipeline (Import → Dedup → Clean → Summary → Outreach)</button>
+    </div>
+
+    <hr>
+
+    <div class="section-title">Full History Import Status</div>
+
+    <div class="row">
+      <button class="btn btn-warning" id="btnResumeStatus" onclick="checkResumeStatus()">
+        Check Resume Status
+      </button>
+    </div>
+
+    <div class="row">
+      <button class="btn btn-warning" id="btnResetResume" onclick="resetResume()">
+        Reset Resume Pointers
+      </button>
+    </div>
+
+    <div class="section-title">Status Log</div>
+    <div id="status" class="status">Ready.</div>
+
+    <script>
+      function ts_() { return new Date().toLocaleTimeString(); }
+      function log(msg) {
+        const el = document.getElementById('status');
+        el.textContent = `[${ts_()}] ${msg}\n` + el.textContent;
+      }
+
+      function disableAll_(disabled) {
+        const ids = [
+          'btnSetRange','btnSaveMarketing','btnSaveOutreach',
+          'b1','b2','b3','b4','b5','b6','btnFull',
+          'btnResumeStatus','btnResetResume'
+        ];
+        ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
+      }
+
+      function setConn_(ok) {
+        const el = document.getElementById('conn');
+        if (!el) return;
+        el.textContent = ok ? 'connected' : 'offline';
+        el.style.background = ok ? '#e6f4ea' : '#fce8e6';
+        el.style.color = ok ? '#137333' : '#a50e0e';
+      }
+
+      function runFn(fnName) {
+        log(`Starting: ${fnName}...`);
+        disableAll_(true);
+        google.script.run
+          .withSuccessHandler(res => { log(`✓ ${res || (fnName + ' complete.')}`); disableAll_(false); })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
+          [fnName]();
+      }
+
+      function getPreset_() { return (document.getElementById('preset').value || '').trim(); }
+      function getStart_() { return (document.getElementById('start').value || '').trim(); }
+      function getEnd_() { return (document.getElementById('end').value || '').trim(); }
+
+      function setRange() {
+        const preset = getPreset_();
+        const start = getStart_();
+        const end = getEnd_();
+
+        if (preset === 'custom' && (!start || !end)) {
+          log('✗ ERROR: Custom range requires Start Date + End Date.');
+          return;
+        }
+
+        log(`Setting date range (preset=${preset})...`);
+        disableAll_(true);
+        google.script.run
+          .withSuccessHandler(res => { log(`✓ ${res}`); disableAll_(false); })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
+          .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
+      }
+
+      function runBuildSummary() {
+        const preset = getPreset_();
+        const start = getStart_();
+        const end = getEnd_();
+
+        if (preset === 'custom' && (!start || !end)) {
+          log('✗ ERROR: Custom range requires Start Date + End Date.');
+          return;
+        }
+
+        log('Building Orders Summary Report (sets date range first)...');
+        disableAll_(true);
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            log(`✓ ${res}`);
+            google.script.run
+              .withSuccessHandler(r => { log(`✓ ${r || 'Orders Summary built.'}`); disableAll_(false); })
+              .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
+              .buildOrdersSummaryReport();
+          })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
+          .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
+      }
+
+      function runFull() {
+        const preset = getPreset_();
+        const start = getStart_();
+        const end = getEnd_();
+
+        if (preset === 'custom' && (!start || !end)) {
+          log('✗ ERROR: Custom range requires Start Date + End Date.');
+          return;
+        }
+
+        log('Running FULL pipeline (sets date range first)...');
+        disableAll_(true);
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            log(`✓ ${res}`);
+            google.script.run
+              .withSuccessHandler(r => { log(`✓ ${r || 'Full pipeline complete.'}`); disableAll_(false); })
+              .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
+              .runFullPipelineFromSidebar();
+          })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
+          .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
+      }
+
+      function checkResumeStatus() {
+        log('Checking full-history resume status...');
+        google.script.run
+          .withSuccessHandler(res => {
+            log(`Shopify Full History: ${res.shopify}`);
+            log(`Squarespace Full History: ${res.squarespace}`);
+          })
+          .withFailureHandler(err => {
+            log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`);
+          })
+          .getFullHistoryResumeStatus();
+      }
+
+      function resetResume() {
+        if (!confirm('This will restart FULL HISTORY imports from the beginning. Continue?')) return;
+
+        log('Resetting resume pointers...');
+        google.script.run
+          .withSuccessHandler(res => { log(`✓ ${res}`); })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); })
+          .resetFullHistoryResumePointers();
+      }
+
+      function loadOutreachControls() {
+        log('Loading outreach controls...');
+        google.script.run
+          .withSuccessHandler(c => {
+            document.getElementById('ltvThreshold').value = c.ltvThreshold ?? 5000;
+            document.getElementById('aggressiveness').value = c.aggressiveness ?? 1.5;
+            document.getElementById('maxDays').value = c.maxDays ?? 365;
+            document.getElementById('minOrders').value = c.minOrders ?? 2;
+            document.getElementById('minLtvOverride').value = (c.minLtvOverride ?? '');
+            log('✓ Outreach controls loaded.');
+          })
+          .withFailureHandler(err => log(`✗ ERROR loading outreach controls: ${err && err.message ? err.message : String(err)}`))
+          .getOutreachControlsForSidebar();
+      }
+
+      function saveOutreachControls() {
+        const ltvThreshold = (document.getElementById('ltvThreshold').value || '').trim();
+        const aggressiveness = (document.getElementById('aggressiveness').value || '').trim();
+        const maxDays = (document.getElementById('maxDays').value || '').trim();
+        const minOrders = (document.getElementById('minOrders').value || '').trim();
+        const minLtvOverride = (document.getElementById('minLtvOverride').value || '').trim();
+
+        log('Saving outreach controls...');
+        disableAll_(true);
+        google.script.run
+          .withSuccessHandler(res => { log(`✓ ${res}`); disableAll_(false); })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
+          .setOutreachControlsFromSidebar(ltvThreshold, aggressiveness, maxDays, minOrders, (minLtvOverride === '' ? '' : minLtvOverride));
+      }
+
+      function loadMarketingControls() {
+        log('Loading marketing controls...');
+        google.script.run
+          .withSuccessHandler(c => {
+            document.getElementById('marketingSpend').value = c.marketingSpend ?? 0;
+            // WHOLE numbers now (60 / 15)
+            document.getElementById('contributionMarginPct').value = c.contributionMarginPct ?? 60;
+            document.getElementById('targetSpendPct').value = c.targetSpendPct ?? 15;
+            log('✓ Marketing controls loaded.');
+          })
+          .withFailureHandler(err => log(`✗ ERROR loading marketing controls: ${err && err.message ? err.message : String(err)}`))
+          .getMarketingControlsForSidebar();
+      }
+
+      function saveMarketingControls() {
+        const marketingSpend = (document.getElementById('marketingSpend').value || '').trim();
+        const contributionMarginPct = (document.getElementById('contributionMarginPct').value || '').trim(); // WHOLE
+        const targetSpendPct = (document.getElementById('targetSpendPct').value || '').trim();               // WHOLE
+
+        log('Saving marketing controls...');
+        disableAll_(true);
+        google.script.run
+          .withSuccessHandler(res => { log(`✓ ${res}`); disableAll_(false); })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
+          .setMarketingControlsFromSidebar(marketingSpend, contributionMarginPct, targetSpendPct);
+      }
+
+      window.addEventListener('load', function() {
+        const today = new Date();
+        const lastWeek = new Date();
+        lastWeek.setDate(today.getDate() - 7);
+
+        document.getElementById('start').value = lastWeek.toISOString().split('T')[0];
+        document.getElementById('end').value = today.toISOString().split('T')[0];
+
+        disableAll_(true);
+
+        google.script.run
+          .withSuccessHandler(function(){
+            setConn_(true);
+            disableAll_(false);
+            log('✓ Connected to Apps Script.');
+            loadOutreachControls();
+            loadMarketingControls();
+            setTimeout(checkResumeStatus, 500);
+          })
+          .withFailureHandler(function(err){
+            setConn_(false);
+            disableAll_(false);
+            log(`✗ Connection failed: ${err && err.message ? err.message : String(err)}`);
+          })
+          .getOutreachControlsForSidebar();
+      });
+    </script>
+  </body>
+</html>
