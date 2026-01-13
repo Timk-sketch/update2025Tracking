@@ -7,6 +7,7 @@ function runFullPipelineFromSidebar() {
   importShopifyOrders();
   importSquarespaceOrders();
   refreshShopifyAdjustments();
+  refreshSquarespaceAdjustments();
   deduplicateAllOrders();
   buildAllOrdersClean();
   buildOrdersSummaryReport();
@@ -18,6 +19,7 @@ function runFullPipelineTightLast60Days() {
   importShopifyOrders();
   importSquarespaceOrders();
   refreshShopifyAdjustmentsLast60Days();
+  refreshSquarespaceAdjustmentsLast60Days();
   deduplicateAllOrders();
   buildAllOrdersClean();
   buildOrdersSummaryReport();
@@ -51,6 +53,8 @@ function rebuildOrderToolsMenu() {
     .addSeparator()
     .addItem('Refresh Shopify Discounts + Refunds (incremental)', 'refreshShopifyAdjustments')
     .addItem('Refresh Shopify Discounts + Refunds (FORCE last 60 days)', 'refreshShopifyAdjustmentsLast60Days')
+    .addItem('Refresh Squarespace Refunds (incremental)', 'refreshSquarespaceAdjustments')
+    .addItem('Refresh Squarespace Refunds (FORCE last 60 days)', 'refreshSquarespaceAdjustmentsLast60Days')
     .addSeparator()
     .addItem('Deduplicate All Orders', 'deduplicateAllOrders')
     .addSeparator()
