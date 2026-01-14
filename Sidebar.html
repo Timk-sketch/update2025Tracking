@@ -57,6 +57,13 @@
       <div class="help-text">Skip import, just check for new refunds (last 90 days)</div>
     </div>
 
+    <div class="row">
+      <button id="btnClean" onclick="runFn('buildAllOrdersClean')">
+        🧹 Build Clean Orders
+      </button>
+      <div class="help-text">Rebuild the clean master sheet from Shopify + Squarespace orders</div>
+    </div>
+
     <hr>
 
     <div class="section-title">Step 2: Set Report Filters</div>
@@ -204,7 +211,7 @@
       function disableAll_(disabled) {
         const ids = [
           'btnSetRange','btnSaveMarketing','btnSaveOutreach',
-          'btnImportUpdate','btnUpdateOnly','btnSummary','btnRefunds','btnDiscounts','btnOutreach','btnFull'
+          'btnImportUpdate','btnUpdateOnly','btnClean','btnSummary','btnRefunds','btnDiscounts','btnOutreach','btnFull'
         ];
         ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
       }
