@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nOptimize pipeline to prevent execution timeouts\n\n- Change default pipeline to skip full imports \\(only refresh refunds\\)\n- Add new runFullPipelineWithImports\\(\\) for when full imports are needed\n- Update menu items with clear fast/slow indicators\n- Fast pipeline: 3-4 min \\(refresh only\\)\n- Slow pipeline: 6+ min \\(with full imports, may need multiple runs\\)\n\nFixes: Exceeded maximum execution time error\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(clasp push:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)"
+    ]
+  }
+}
