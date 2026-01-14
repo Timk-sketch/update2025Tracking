@@ -84,21 +84,17 @@ function showSidebar() {
 function rebuildOrderToolsMenu() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Order Tools')
-    .addItem('Show Sidebar', 'showSidebar')
+    .addItem('📊 Show Sidebar', 'showSidebar')
     .addSeparator()
-    .addItem('⚡ Import & Update Orders', 'importAndUpdateAllOrders')
-    .addItem('🔄 Update Orders (Refunds Only)', 'updateAllOrdersWithRefunds')
-    .addSeparator()
-    .addItem('Build Clean Master (All_Orders_Clean)', 'buildAllOrdersClean')
-    .addItem('Build Orders Summary Report', 'buildOrdersSummaryReport')
-    .addItem('Build Customer Outreach List', 'buildCustomerOutreachList')
-    .addSeparator()
-    .addSubMenu(ui.createMenu('⚙️ Admin / Advanced')
-      .addItem('📥 Import Shopify Orders Only', 'importShopifyOrders')
-      .addItem('📥 Import Squarespace Orders Only', 'importSquarespaceOrders')
-      .addSeparator()
+    .addSubMenu(ui.createMenu('⚙️ Admin / Setup')
       .addItem('⚠️ Import ALL Shopify History', 'importShopifyOrdersFullHistory')
       .addItem('⚠️ Import ALL Squarespace History', 'importSquarespaceOrdersFullHistory')
+      .addSeparator()
+      .addItem('Check Full History Status', 'viewFullHistoryResumeStatus')
+      .addItem('Reset Full History Pointers', 'resetFullHistoryResumePointers')
+      .addSeparator()
+      .addItem('📥 Import Shopify Orders Only', 'importShopifyOrders')
+      .addItem('📥 Import Squarespace Orders Only', 'importSquarespaceOrders')
       .addSeparator()
       .addItem('Refresh Shopify Refunds (30 days)', 'refreshShopifyAdjustments')
       .addItem('Refresh Shopify Refunds (60 days)', 'refreshShopifyAdjustmentsLast60Days')
@@ -106,11 +102,16 @@ function rebuildOrderToolsMenu() {
       .addItem('Refresh Squarespace Refunds (60 days)', 'refreshSquarespaceAdjustmentsLast60Days')
       .addSeparator()
       .addItem('Deduplicate All Orders', 'deduplicateAllOrders')
-      .addSeparator()
-      .addItem('⚡ Pipeline (FAST - refresh only)', 'runFullPipelineFromSidebar')
-      .addItem('⚡ Pipeline (TIGHT - last 60 days)', 'runFullPipelineTightLast60Days')
-      .addItem('⏱️ Pipeline (with Full Imports)', 'runFullPipelineWithImports'))
+      .addItem('Build Clean Master Only', 'buildAllOrdersClean'))
     .addToUi();
+}
+
+// Helper function to display full history status
+function viewFullHistoryResumeStatus() {
+  const status = getFullHistoryResumeStatus();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.toast(`Shopify: ${status.shopify}\nSquarespace: ${status.squarespace}`, 'Full History Status', 10);
+  return status;
 }
 
 function onOpen() {

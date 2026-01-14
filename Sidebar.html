@@ -10,6 +10,8 @@
       button { cursor:pointer; background:#4285f4; color:#fff; border:none; border-radius:4px; font-weight:600; }
       button:hover { background:#3367d6; }
       button:disabled { background:#9aa0a6; cursor:not-allowed; }
+      .btn-primary { background:#1a73e8; }
+      .btn-primary:hover { background:#1557b0; }
       .btn-secondary { background:#34a853; }
       .btn-secondary:hover { background:#2d9249; }
       .btn-warning { background:#fbbc04; color:#333; }
@@ -28,16 +30,39 @@
         display:inline-block; padding:2px 6px; border-radius:999px;
         background:#e8f0fe; color:#1a73e8; font-size:10px; font-weight:700;
       }
+      .help-text {
+        font-size: 10px;
+        color: #666;
+        margin-top: 4px;
+        font-style: italic;
+      }
     </style>
   </head>
   <body>
     <h3>Order Tools <span class="pill" id="conn">connecting…</span></h3>
-    <div class="muted">Pick a date range, set marketing + outreach controls, then run Summary + Outreach.</div>
+    <div class="muted">Update orders, set filters, then build reports. All data is always kept up-to-date.</div>
 
-    <div class="section-title">Date Range</div>
+    <div class="section-title">Step 1: Update Orders</div>
+    <div class="row">
+      <button class="btn-primary" id="btnImportUpdate" onclick="runFn('importAndUpdateAllOrders')">
+        ⚡ Import & Update Orders
+      </button>
+      <div class="help-text">Imports new orders (last 14 days) + checks refunds (last 90 days)</div>
+    </div>
 
     <div class="row">
-      <label>Preset Range</label>
+      <button id="btnUpdateOnly" onclick="runFn('updateAllOrdersWithRefunds')">
+        🔄 Check Refunds Only
+      </button>
+      <div class="help-text">Skip import, just check for new refunds (last 90 days)</div>
+    </div>
+
+    <hr>
+
+    <div class="section-title">Step 2: Set Report Filters</div>
+
+    <div class="row">
+      <label>Date Range for Reports</label>
       <select id="preset">
         <option value="custom">Custom (use dates below)</option>
         <option value="today">Today</option>
@@ -61,12 +86,12 @@
     </div>
 
     <div class="row">
-      <button class="btn-warning" id="btnSetRange" onclick="setRange()">Set Report Date Range</button>
+      <button class="btn-warning" id="btnSetRange" onclick="setRange()">Set Date Range</button>
     </div>
 
     <hr>
 
-    <div class="section-title">Marketing Controls (used in Summary)</div>
+    <div class="section-title">Marketing Controls (for Summary Report)</div>
 
     <div class="row">
       <label>Marketing Spend ($)</label>
@@ -76,12 +101,10 @@
     <div class="two-col">
       <div class="row">
         <label>Contribution Margin (%)</label>
-        <!-- WHOLE number now: 60 means 60% -->
         <input id="contributionMarginPct" type="number" step="1" min="0" max="100" placeholder="e.g. 60">
       </div>
       <div class="row">
         <label>Target Spend % of Revenue</label>
-        <!-- WHOLE number now: 15 means 15% -->
         <input id="targetSpendPct" type="number" step="1" min="0" max="100" placeholder="e.g. 15">
       </div>
     </div>
@@ -92,7 +115,7 @@
 
     <hr>
 
-    <div class="section-title">Outreach Controls</div>
+    <div class="section-title">Outreach Controls (for Outreach Report)</div>
 
     <div class="two-col">
       <div class="row">
@@ -127,42 +150,31 @@
 
     <hr>
 
-    <div class="section-title">Individual Steps</div>
-
-    <div class="row"><button id="b1" onclick="runFn('importShopifyOrders')">1) Import Shopify Orders</button></div>
-    <div class="row"><button id="b2" onclick="runFn('importSquarespaceOrders')">2) Import Squarespace Orders</button></div>
-    <div class="row"><button id="b3" onclick="runFn('deduplicateAllOrders')">3) Deduplicate All Orders</button></div>
-    <div class="row"><button id="b4" onclick="runFn('buildAllOrdersClean')">4) Build Clean Master (All_Orders_Clean)</button></div>
+    <div class="section-title">Step 3: Build Reports</div>
 
     <div class="row">
-      <button id="b5" onclick="runBuildSummary()">5) Build Orders Summary Report</button>
+      <button class="btn-secondary" id="btnSummary" onclick="runBuildSummary()">
+        📊 Build Summary Report
+      </button>
+      <div class="help-text">Uses the date range and marketing controls above</div>
     </div>
 
     <div class="row">
-      <button id="b6" onclick="runFn('buildCustomerOutreachList')">6) Build Customer Outreach List</button>
+      <button class="btn-secondary" id="btnOutreach" onclick="runFn('buildCustomerOutreachList')">
+        📧 Build Outreach List
+      </button>
+      <div class="help-text">Uses the outreach controls above</div>
     </div>
 
     <hr>
 
-    <div class="section-title">Full Pipeline</div>
-    <div class="row">
-      <button class="btn-secondary" id="btnFull" onclick="runFull()">Run Full Pipeline (Import → Dedup → Clean → Summary → Outreach)</button>
-    </div>
-
-    <hr>
-
-    <div class="section-title">Full History Import Status</div>
+    <div class="section-title">Quick Actions</div>
 
     <div class="row">
-      <button class="btn btn-warning" id="btnResumeStatus" onclick="checkResumeStatus()">
-        Check Resume Status
+      <button class="btn-secondary" id="btnFull" onclick="runFull()">
+        🚀 Do Everything (Import → Update → Build All Reports)
       </button>
-    </div>
-
-    <div class="row">
-      <button class="btn btn-warning" id="btnResetResume" onclick="resetResume()">
-        Reset Resume Pointers
-      </button>
+      <div class="help-text">Runs the complete workflow in one click</div>
     </div>
 
     <div class="section-title">Status Log</div>
@@ -178,8 +190,7 @@
       function disableAll_(disabled) {
         const ids = [
           'btnSetRange','btnSaveMarketing','btnSaveOutreach',
-          'b1','b2','b3','b4','b5','b6','btnFull',
-          'btnResumeStatus','btnResetResume'
+          'btnImportUpdate','btnUpdateOnly','btnSummary','btnOutreach','btnFull'
         ];
         ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
       }
@@ -258,42 +269,19 @@
           return;
         }
 
-        log('Running FULL pipeline (sets date range first)...');
+        log('Running FULL workflow (Import → Update → Build Reports)...');
         disableAll_(true);
 
         google.script.run
           .withSuccessHandler(function(res) {
             log(`✓ ${res}`);
             google.script.run
-              .withSuccessHandler(r => { log(`✓ ${r || 'Full pipeline complete.'}`); disableAll_(false); })
+              .withSuccessHandler(r => { log(`✓ ${r || 'Full workflow complete.'}`); disableAll_(false); })
               .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
               .runFullPipelineFromSidebar();
           })
           .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
           .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
-      }
-
-      function checkResumeStatus() {
-        log('Checking full-history resume status...');
-        google.script.run
-          .withSuccessHandler(res => {
-            log(`Shopify Full History: ${res.shopify}`);
-            log(`Squarespace Full History: ${res.squarespace}`);
-          })
-          .withFailureHandler(err => {
-            log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`);
-          })
-          .getFullHistoryResumeStatus();
-      }
-
-      function resetResume() {
-        if (!confirm('This will restart FULL HISTORY imports from the beginning. Continue?')) return;
-
-        log('Resetting resume pointers...');
-        google.script.run
-          .withSuccessHandler(res => { log(`✓ ${res}`); })
-          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); })
-          .resetFullHistoryResumePointers();
       }
 
       function loadOutreachControls() {
@@ -331,7 +319,6 @@
         google.script.run
           .withSuccessHandler(c => {
             document.getElementById('marketingSpend').value = c.marketingSpend ?? 0;
-            // WHOLE numbers now (60 / 15)
             document.getElementById('contributionMarginPct').value = c.contributionMarginPct ?? 60;
             document.getElementById('targetSpendPct').value = c.targetSpendPct ?? 15;
             log('✓ Marketing controls loaded.');
@@ -342,8 +329,8 @@
 
       function saveMarketingControls() {
         const marketingSpend = (document.getElementById('marketingSpend').value || '').trim();
-        const contributionMarginPct = (document.getElementById('contributionMarginPct').value || '').trim(); // WHOLE
-        const targetSpendPct = (document.getElementById('targetSpendPct').value || '').trim();               // WHOLE
+        const contributionMarginPct = (document.getElementById('contributionMarginPct').value || '').trim();
+        const targetSpendPct = (document.getElementById('targetSpendPct').value || '').trim();
 
         log('Saving marketing controls...');
         disableAll_(true);
@@ -370,7 +357,6 @@
             log('✓ Connected to Apps Script.');
             loadOutreachControls();
             loadMarketingControls();
-            setTimeout(checkResumeStatus, 500);
           })
           .withFailureHandler(function(err){
             setConn_(false);
