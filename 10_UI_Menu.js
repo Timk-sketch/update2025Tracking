@@ -4,6 +4,19 @@
 
 // PIPELINE (sidebar)
 function runFullPipelineFromSidebar() {
+  // Only refresh refunds/discounts (much faster than full import)
+  // Full imports should be run separately when needed
+  refreshShopifyAdjustments();
+  refreshSquarespaceAdjustments();
+  deduplicateAllOrders();
+  buildAllOrdersClean();
+  buildOrdersSummaryReport();
+  buildCustomerOutreachList();
+  return "Full pipeline complete (Refresh Refunds/Discounts → Dedup → Clean → Summary → Outreach)";
+}
+
+// NEW: Pipeline with full imports (slower, use when you need to import new orders)
+function runFullPipelineWithImports() {
   importShopifyOrders();
   importSquarespaceOrders();
   refreshShopifyAdjustments();
@@ -12,19 +25,18 @@ function runFullPipelineFromSidebar() {
   buildAllOrdersClean();
   buildOrdersSummaryReport();
   buildCustomerOutreachList();
-  return "Full pipeline complete (Import → Refresh Refunds/Discounts → Dedup → Clean → Summary → Outreach)";
+  return "Full pipeline with imports complete (Import → Refresh → Dedup → Clean → Summary → Outreach)";
 }
 
 function runFullPipelineTightLast60Days() {
-  importShopifyOrders();
-  importSquarespaceOrders();
+  // Refresh last 60 days with append (faster, no full import)
   refreshShopifyAdjustmentsLast60Days();
   refreshSquarespaceAdjustmentsLast60Days();
   deduplicateAllOrders();
   buildAllOrdersClean();
   buildOrdersSummaryReport();
   buildCustomerOutreachList();
-  return "TIGHT pipeline complete (Import → Refresh last 60 days → Dedup → Clean → Summary → Outreach)";
+  return "TIGHT pipeline complete (Refresh last 60 days → Dedup → Clean → Summary → Outreach)";
 }
 
 // MENU
@@ -62,8 +74,9 @@ function rebuildOrderToolsMenu() {
     .addItem('Build Orders Summary Report', 'buildOrdersSummaryReport')
     .addItem('Build Customer Outreach List', 'buildCustomerOutreachList')
     .addSeparator()
-    .addItem('Run Full Pipeline (fast)', 'runFullPipelineFromSidebar')
-    .addItem('Run Full Pipeline (TIGHT last 60 days)', 'runFullPipelineTightLast60Days')
+    .addItem('⚡ Run Pipeline (FAST - refresh only)', 'runFullPipelineFromSidebar')
+    .addItem('⚡ Run Pipeline (TIGHT - last 60 days)', 'runFullPipelineTightLast60Days')
+    .addItem('⏱️ Run Pipeline with Full Imports (SLOW)', 'runFullPipelineWithImports')
     .addToUi();
 }
 
