@@ -222,10 +222,10 @@ function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
   const sheet = ss.getSheetByName('Squarespace Orders');
   if (!sheet) throw new Error('Squarespace Orders sheet not found');
 
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 1) throw new Error('Squarespace Orders sheet appears empty');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 1) throw new Error('Squarespace Orders sheet appears empty');
 
-  const headers = data[0].map(h => String(h || '').trim());
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
 
   // Find key columns
   const idCol = findHeaderIndex_(headers, ['Order ID', 'order id', 'order_id']);
@@ -238,15 +238,21 @@ function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
     throw new Error('Squarespace Orders sheet missing required columns: "Order ID" and/or "LineItem ID"');
   }
 
-  // Build existing map: key => {row, currentRefund}
+  // OPTIMIZATION: Read only the necessary columns instead of entire sheet
   const existing = {};
-  for (let r = 1; r < data.length; r++) {
-    const oid = data[r][idCol];
-    const lid = data[r][lineIdCol];
-    if (oid != null && lid != null && oid !== '' && lid !== '') {
-      const key = String(oid) + '_' + String(lid);
-      const currentRefund = refundValueCol !== -1 ? data[r][refundValueCol] : 0;
-      existing[key] = { row: r + 1, currentRefund };
+  if (lastRow > 1) {
+    const orderIds = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
+    const lineIds = sheet.getRange(2, lineIdCol + 1, lastRow - 1, 1).getValues();
+    const refunds = refundValueCol !== -1 ? sheet.getRange(2, refundValueCol + 1, lastRow - 1, 1).getValues() : null;
+
+    for (let r = 0; r < orderIds.length; r++) {
+      const oid = orderIds[r][0];
+      const lid = lineIds[r][0];
+      if (oid != null && lid != null && oid !== '' && lid !== '') {
+        const key = String(oid) + '_' + String(lid);
+        const currentRefund = refunds ? refunds[r][0] : 0;
+        existing[key] = { row: r + 2, currentRefund }; // r + 2 because we start at row 2
+      }
     }
   }
 
@@ -343,18 +349,52 @@ function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
     page++;
   } while (cursor);
 
-  // Batch write all updates
+  // Batch write all updates (TRUE batch write for speed)
   let rowsUpdated = 0;
   if (updates.length > 0 && refundValueCol !== -1) {
-    updates.forEach(upd => {
-      sheet.getRange(upd.row, refundValueCol + 1).setValue(upd.refund);
-      if (refundCurrencyCol !== -1 && upd.currency) {
-        sheet.getRange(upd.row, refundCurrencyCol + 1).setValue(upd.currency);
+    updates.sort((a, b) => a.row - b.row);
+
+    // Group consecutive rows for batch writes
+    let batchStart = updates[0].row;
+    let batchRefunds = [[updates[0].refund]];
+    let batchCurrency = refundCurrencyCol !== -1 ? [[updates[0].currency || '']] : null;
+    let batchModified = modifiedOnCol !== -1 ? [[updates[0].modifiedOn || '']] : null;
+
+    for (let i = 1; i < updates.length; i++) {
+      const prevRow = updates[i - 1].row;
+      const currRow = updates[i].row;
+
+      // If consecutive, add to batch
+      if (currRow === prevRow + 1) {
+        batchRefunds.push([updates[i].refund]);
+        if (batchCurrency) batchCurrency.push([updates[i].currency || '']);
+        if (batchModified) batchModified.push([updates[i].modifiedOn || '']);
+      } else {
+        // Write batch and start new one
+        sheet.getRange(batchStart, refundValueCol + 1, batchRefunds.length, 1).setValues(batchRefunds);
+        if (batchCurrency && refundCurrencyCol !== -1) {
+          sheet.getRange(batchStart, refundCurrencyCol + 1, batchCurrency.length, 1).setValues(batchCurrency);
+        }
+        if (batchModified && modifiedOnCol !== -1) {
+          sheet.getRange(batchStart, modifiedOnCol + 1, batchModified.length, 1).setValues(batchModified);
+        }
+
+        batchStart = currRow;
+        batchRefunds = [[updates[i].refund]];
+        batchCurrency = refundCurrencyCol !== -1 ? [[updates[i].currency || '']] : null;
+        batchModified = modifiedOnCol !== -1 ? [[updates[i].modifiedOn || '']] : null;
       }
-      if (modifiedOnCol !== -1 && upd.modifiedOn) {
-        sheet.getRange(upd.row, modifiedOnCol + 1).setValue(upd.modifiedOn);
-      }
-    });
+    }
+
+    // Write final batch
+    sheet.getRange(batchStart, refundValueCol + 1, batchRefunds.length, 1).setValues(batchRefunds);
+    if (batchCurrency && refundCurrencyCol !== -1) {
+      sheet.getRange(batchStart, refundCurrencyCol + 1, batchCurrency.length, 1).setValues(batchCurrency);
+    }
+    if (batchModified && modifiedOnCol !== -1) {
+      sheet.getRange(batchStart, modifiedOnCol + 1, batchModified.length, 1).setValues(batchModified);
+    }
+
     rowsUpdated = updates.length;
   }
 

@@ -361,10 +361,10 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
   const sheet = ss.getSheetByName('Shopify Orders');
   if (!sheet) throw new Error('Shopify Orders sheet not found');
 
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 1) throw new Error('Shopify Orders sheet appears empty');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 1) throw new Error('Shopify Orders sheet appears empty');
 
-  const headers = data[0].map(h => String(h || '').trim());
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
 
   // Find key columns
   const idCol = findHeaderIndex_(headers, ['Order ID', 'order id', 'order_id']);
@@ -376,15 +376,21 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
     throw new Error('Shopify Orders sheet missing required columns: "Order ID" and/or "Lineitem ID"');
   }
 
-  // Build existing map: key => {row, currentRefund}
+  // OPTIMIZATION: Read only the necessary columns instead of entire sheet
   const existing = {};
-  for (let r = 1; r < data.length; r++) {
-    const oid = data[r][idCol];
-    const lid = data[r][lineIdCol];
-    if (oid != null && lid != null && oid !== '' && lid !== '') {
-      const key = String(oid) + '_' + String(lid);
-      const currentRefund = refundsCol !== -1 ? data[r][refundsCol] : 0;
-      existing[key] = { row: r + 1, currentRefund };
+  if (lastRow > 1) {
+    const orderIds = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
+    const lineIds = sheet.getRange(2, lineIdCol + 1, lastRow - 1, 1).getValues();
+    const refunds = refundsCol !== -1 ? sheet.getRange(2, refundsCol + 1, lastRow - 1, 1).getValues() : null;
+
+    for (let r = 0; r < orderIds.length; r++) {
+      const oid = orderIds[r][0];
+      const lid = lineIds[r][0];
+      if (oid != null && lid != null && oid !== '' && lid !== '') {
+        const key = String(oid) + '_' + String(lid);
+        const currentRefund = refunds ? refunds[r][0] : 0;
+        existing[key] = { row: r + 2, currentRefund }; // r + 2 because we start at row 2
+      }
     }
   }
 
@@ -477,17 +483,43 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
     }
   }
 
-  // Batch write all updates
+  // Batch write all updates (TRUE batch write for speed)
   let rowsUpdated = 0;
   if (updates.length > 0 && refundsCol !== -1) {
     updates.sort((a, b) => a.row - b.row);
 
-    for (let i = 0; i < updates.length; i++) {
-      sheet.getRange(updates[i].row, refundsCol + 1).setValue(updates[i].refund);
-      if (updatedAtCol !== -1 && updates[i].updatedAt) {
-        sheet.getRange(updates[i].row, updatedAtCol + 1).setValue(updates[i].updatedAt);
+    // Group consecutive rows for batch writes
+    let batchStart = updates[0].row;
+    let batchData = [[updates[0].refund]];
+    let batchUpdatedData = updatedAtCol !== -1 ? [[updates[0].updatedAt || '']] : null;
+
+    for (let i = 1; i < updates.length; i++) {
+      const prevRow = updates[i - 1].row;
+      const currRow = updates[i].row;
+
+      // If consecutive, add to batch
+      if (currRow === prevRow + 1) {
+        batchData.push([updates[i].refund]);
+        if (batchUpdatedData) batchUpdatedData.push([updates[i].updatedAt || '']);
+      } else {
+        // Write batch and start new one
+        sheet.getRange(batchStart, refundsCol + 1, batchData.length, 1).setValues(batchData);
+        if (batchUpdatedData && updatedAtCol !== -1) {
+          sheet.getRange(batchStart, updatedAtCol + 1, batchUpdatedData.length, 1).setValues(batchUpdatedData);
+        }
+
+        batchStart = currRow;
+        batchData = [[updates[i].refund]];
+        batchUpdatedData = updatedAtCol !== -1 ? [[updates[i].updatedAt || '']] : null;
       }
     }
+
+    // Write final batch
+    sheet.getRange(batchStart, refundsCol + 1, batchData.length, 1).setValues(batchData);
+    if (batchUpdatedData && updatedAtCol !== -1) {
+      sheet.getRange(batchStart, updatedAtCol + 1, batchUpdatedData.length, 1).setValues(batchUpdatedData);
+    }
+
     rowsUpdated = updates.length;
   }
 

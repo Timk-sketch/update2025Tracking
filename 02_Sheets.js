@@ -133,17 +133,24 @@ function deduplicateSheet(sheetName, headers) {
 
   const seen = new Set();
   const rowsToKeep = [data[0]];
+  let duplicatesFound = 0;
 
   for (let i = 1; i < data.length; i++) {
     const key = String(data[i][idCol] || "") + '::' + String(data[i][keyCol] || "");
     if (!seen.has(key)) {
       rowsToKeep.push(data[i]);
       seen.add(key);
+    } else {
+      duplicatesFound++;
     }
   }
 
-  sheet.clearContents();
-  sheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+  // Only rewrite if duplicates were found (saves time)
+  if (duplicatesFound > 0) {
+    sheet.clearContents();
+    sheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+    logProgress(sheetName, `Removed ${duplicatesFound} duplicate rows`, false);
+  }
 }
 
 function deduplicateAllOrders() {

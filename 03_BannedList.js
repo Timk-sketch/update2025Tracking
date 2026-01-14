@@ -2,18 +2,31 @@
 // 03_BannedList.gs — Banned email list loading + checks
 // =====================================================
 
+// Cache banned list in memory to avoid redundant loads during same execution
+let BANNED_LIST_CACHE_ = null;
+
 function loadBannedList_() {
-  if (!BANNED_ARCHIVE_ID) return { exact: new Set(), domains: new Set() };
+  // Return cached version if available
+  if (BANNED_LIST_CACHE_ !== null) return BANNED_LIST_CACHE_;
+
+  if (!BANNED_ARCHIVE_ID) {
+    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set() };
+    return BANNED_LIST_CACHE_;
+  }
 
   let bannedSheet = null;
   try {
     const ss = SpreadsheetApp.openById(BANNED_ARCHIVE_ID);
     bannedSheet = ss.getSheetByName(BANNED_SHEET_NAME_PRIMARY) || ss.getSheetByName(BANNED_SHEET_NAME_FALLBACK);
   } catch (e) {
-    return { exact: new Set(), domains: new Set() };
+    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set() };
+    return BANNED_LIST_CACHE_;
   }
 
-  if (!bannedSheet) return { exact: new Set(), domains: new Set() };
+  if (!bannedSheet) {
+    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set() };
+    return BANNED_LIST_CACHE_;
+  }
 
   const values = bannedSheet
     .getRange(2, 1, Math.max(0, bannedSheet.getLastRow() - 1), 1)
@@ -35,7 +48,8 @@ function loadBannedList_() {
       });
     });
 
-  return { exact, domains };
+  BANNED_LIST_CACHE_ = { exact, domains };
+  return BANNED_LIST_CACHE_;
 }
 
 function isBannedEmail_(emailRaw, banned) {
