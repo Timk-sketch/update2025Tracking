@@ -57,16 +57,14 @@ function pruneSquarespaceLastNDays_(daysBack) {
 }
 
 function importSquarespaceOrders() {
-  const DAYS_BACK = 120;
+  const DAYS_BACK = 14; // Only fetch recent orders for new imports (triage handles updates)
 
-  logImportEvent('Squarespace', `Import started (overwrite last ${DAYS_BACK} days)`);
+  logImportEvent('Squarespace', `Import started (new orders only, last ${DAYS_BACK} days)`);
 
   const sheet = getOrCreateSheetWithHeaders('Squarespace Orders', SQUARESPACE_ORDER_HEADERS);
 
-  // ✅ Clean overwrite behavior: delete anything modified in last 120 days
-  const removed = pruneSquarespaceLastNDays_(DAYS_BACK);
-
-  // Re-read after prune
+  // NO PRUNING - triage system handles all updates to existing orders
+  // Build dedupe set from ALL existing rows
   const data = sheet.getDataRange().getValues();
   const headers = data[0].map(h => String(h || '').trim());
 
@@ -76,7 +74,7 @@ function importSquarespaceOrders() {
     throw new Error('Squarespace Orders sheet missing required columns: "Order ID" and/or "LineItem ID"');
   }
 
-  // Dedupe against remaining historical rows only (older than 120-day cutoff)
+  // Dedupe against ALL existing rows (no prune, so we check everything)
   const existing = new Set();
   for (let i = 1; i < data.length; i++) {
     const oid = data[i][idCol];
@@ -89,7 +87,7 @@ function importSquarespaceOrders() {
 
   const endpoint = "https://api.squarespace.com/1.0/commerce/orders";
 
-  // Pull all orders MODIFIED in the last 120 days (captures refunds that happen later)
+  // Pull all orders MODIFIED in the last 14 days (only new orders - triage handles updates)
   const d = new Date();
   d.setDate(d.getDate() - DAYS_BACK);
   const modifiedAfter = d.toISOString();
@@ -203,8 +201,8 @@ function importSquarespaceOrders() {
     page++;
   } while (cursor);
 
-  const msg = `Overwrite last ${DAYS_BACK} days: removed ${removed} rows, imported ${rowsImported} Squarespace line items`;
-  logImportEvent('Squarespace', 'Import success', rowsImported);
+  const msg = `Imported ${rowsImported} NEW Squarespace line items (last ${DAYS_BACK} days)`;
+  logImportEvent('Squarespace', 'Import success (new orders only)', rowsImported);
   SpreadsheetApp.getActiveSpreadsheet().toast(`✅ ${msg}`, "Squarespace", 8);
   return msg;
 }

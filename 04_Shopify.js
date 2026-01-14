@@ -188,16 +188,14 @@ function pruneShopifyLastNDays_(daysBack) {
  * Remains compatible with SHOPIFY_ORDER_HEADERS defined in 00_Config.gs.
  */
 function importShopifyOrders() {
-  const DAYS_BACK = 120;
+  const DAYS_BACK = 14; // Only fetch recent orders for new imports (triage handles updates)
 
-  logImportEvent('Shopify', `Import started (overwrite last ${DAYS_BACK} days)`);
+  logImportEvent('Shopify', `Import started (new orders only, last ${DAYS_BACK} days)`);
 
   const sheet = getOrCreateSheetWithHeaders('Shopify Orders', SHOPIFY_ORDER_HEADERS);
 
-  // Clean overwrite behavior: delete anything updated in last 120 days
-  const removed = pruneShopifyLastNDays_(DAYS_BACK);
-
-  // Re-read after prune
+  // NO PRUNING - triage system handles all updates to existing orders
+  // Build dedupe set from ALL existing rows
   const data = sheet.getDataRange().getValues();
   const headers = data[0].map(h => String(h || '').trim());
 
@@ -208,7 +206,7 @@ function importShopifyOrders() {
     throw new Error('Shopify Orders sheet missing required columns: "Order ID" and/or "Lineitem ID"');
   }
 
-  // Dedupe against remaining historical rows only (older than cutoff)
+  // Dedupe against ALL existing rows (no prune, so we check everything)
   const existing = new Set();
   for (let i = 1; i < data.length; i++) {
     const oid = data[i][idCol];
@@ -340,8 +338,8 @@ function importShopifyOrders() {
     url = nextUrl || null;
   }
 
-  const msg = `Overwrite last ${DAYS_BACK} days: removed N rows, imported ${rowsImported} Shopify line items`;
-  logImportEvent('Shopify', 'Import success', rowsImported);
+  const msg = `Imported ${rowsImported} NEW Shopify line items (last ${DAYS_BACK} days)`;
+  logImportEvent('Shopify', 'Import success (new orders only)', rowsImported);
   SpreadsheetApp.getActiveSpreadsheet().toast(`✅ ${msg}`, "Shopify", 8);
   return msg;
 }

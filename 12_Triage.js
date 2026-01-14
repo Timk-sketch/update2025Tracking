@@ -302,9 +302,25 @@ function cleanTriage() {
   totalUpdated += squarespaceResult.updated;
   totalProcessed += squarespaceResult.processed;
 
-  const msg = `Triage cleaned: ${totalProcessed} orders processed, ${totalUpdated} main sheet rows updated`;
-  logImportEvent('Triage', 'Clean triage complete', totalProcessed);
-  ss.toast(`✅ ${msg}`, "Triage Clean", 8);
+  // Check if there are still rows remaining
+  const shopifyTriage = ss.getSheetByName('Shopify Triage');
+  const squarespaceTriage = ss.getSheetByName('Squarespace Triage');
+
+  const shopifyRemaining = shopifyTriage ? Math.max(0, shopifyTriage.getLastRow() - 1) : 0;
+  const squarespaceRemaining = squarespaceTriage ? Math.max(0, squarespaceTriage.getLastRow() - 1) : 0;
+  const totalRemaining = shopifyRemaining + squarespaceRemaining;
+
+  let msg = `Triage cleaned: ${totalProcessed} orders processed, ${Math.round(totalUpdated)} main sheet rows updated`;
+
+  if (totalRemaining > 0) {
+    msg += `\n⚠️ ${totalRemaining} rows remain (${shopifyRemaining} Shopify, ${squarespaceRemaining} Squarespace). Run Clean Triage again to continue.`;
+    logImportEvent('Triage', `Clean triage partial (${totalRemaining} rows remain)`, totalProcessed);
+  } else {
+    msg += '\n✅ All triage sheets are now empty!';
+    logImportEvent('Triage', 'Clean triage complete (all empty)', totalProcessed);
+  }
+
+  ss.toast(msg, "Triage Clean", 10);
   return msg;
 }
 
@@ -312,6 +328,8 @@ function cleanTriage() {
  * Internal: Clean Shopify triage
  */
 function cleanShopifyTriage_() {
+  const MAX_ROWS_PER_RUN = 500; // Process max 500 rows per run to avoid timeout
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const triageSheet = ss.getSheetByName('Shopify Triage');
   const mainSheet = ss.getSheetByName('Shopify Orders');
@@ -353,54 +371,79 @@ function cleanShopifyTriage_() {
     }
   }
 
-  let updated = 0;
+  // Collect updates in memory for batch write
+  const updates = [];
   const rowsToDelete = [];
 
+  // Limit rows processed per run
+  const rowsToProcess = Math.min(triageData.length - 1, MAX_ROWS_PER_RUN);
+
   // Process triage rows
-  for (let r = 1; r < triageData.length; r++) {
+  for (let r = 1; r <= rowsToProcess; r++) {
     const oid = triageData[r][tIdCol];
     const lid = triageData[r][tLineIdCol];
-    if (!oid || !lid) continue;
+    if (!oid || !lid) {
+      rowsToDelete.push(r + 1); // Delete invalid rows
+      continue;
+    }
 
     const key = String(oid) + '_' + String(lid);
     const mainRow = mainIndex[key];
 
     if (mainRow !== undefined) {
-      // Update main sheet
+      // Collect updates for batch write
       const mainRowNum = mainRow + 1; // 1-based
 
       if (mRefundsCol !== -1 && tRefundsCol !== -1) {
-        const newRefund = triageData[r][tRefundsCol];
-        mainSheet.getRange(mainRowNum, mRefundsCol + 1).setValue(newRefund);
+        updates.push({
+          row: mainRowNum,
+          col: mRefundsCol + 1,
+          value: triageData[r][tRefundsCol]
+        });
       }
       if (mDiscountsCol !== -1 && tDiscountsCol !== -1) {
-        const newDiscount = triageData[r][tDiscountsCol];
-        mainSheet.getRange(mainRowNum, mDiscountsCol + 1).setValue(newDiscount);
+        updates.push({
+          row: mainRowNum,
+          col: mDiscountsCol + 1,
+          value: triageData[r][tDiscountsCol]
+        });
       }
       if (mUpdatedCol !== -1 && tUpdatedCol !== -1) {
-        const newUpdated = triageData[r][tUpdatedCol];
-        mainSheet.getRange(mainRowNum, mUpdatedCol + 1).setValue(newUpdated);
+        updates.push({
+          row: mainRowNum,
+          col: mUpdatedCol + 1,
+          value: triageData[r][tUpdatedCol]
+        });
       }
-
-      updated++;
     }
 
     // Mark for deletion (processed)
     rowsToDelete.push(r + 1); // 1-based
   }
 
-  // Delete processed rows from triage (bottom to top to preserve indices)
-  rowsToDelete.reverse().forEach(rowNum => {
-    triageSheet.deleteRow(rowNum);
-  });
+  // Batch write all updates
+  if (updates.length > 0) {
+    updates.forEach(upd => {
+      mainSheet.getRange(upd.row, upd.col).setValue(upd.value);
+    });
+  }
 
-  return { updated: updated, processed: rowsToDelete.length };
+  // Delete processed rows from triage (bottom to top to preserve indices)
+  if (rowsToDelete.length > 0) {
+    rowsToDelete.reverse().forEach(rowNum => {
+      triageSheet.deleteRow(rowNum);
+    });
+  }
+
+  return { updated: updates.length / 3, processed: rowsToDelete.length }; // Divide by 3 since we update 3 cols per order
 }
 
 /**
  * Internal: Clean Squarespace triage
  */
 function cleanSquarespaceTriage_() {
+  const MAX_ROWS_PER_RUN = 500; // Process max 500 rows per run to avoid timeout
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const triageSheet = ss.getSheetByName('Squarespace Triage');
   const mainSheet = ss.getSheetByName('Squarespace Orders');
@@ -442,48 +485,71 @@ function cleanSquarespaceTriage_() {
     }
   }
 
-  let updated = 0;
+  // Collect updates in memory for batch write
+  const updates = [];
   const rowsToDelete = [];
 
+  // Limit rows processed per run
+  const rowsToProcess = Math.min(triageData.length - 1, MAX_ROWS_PER_RUN);
+
   // Process triage rows
-  for (let r = 1; r < triageData.length; r++) {
+  for (let r = 1; r <= rowsToProcess; r++) {
     const oid = triageData[r][tIdCol];
     const lid = triageData[r][tLineIdCol];
-    if (!oid || !lid) continue;
+    if (!oid || !lid) {
+      rowsToDelete.push(r + 1); // Delete invalid rows
+      continue;
+    }
 
     const key = String(oid) + '_' + String(lid);
     const mainRow = mainIndex[key];
 
     if (mainRow !== undefined) {
-      // Update main sheet
+      // Collect updates for batch write
       const mainRowNum = mainRow + 1; // 1-based
 
       if (mRefundValueCol !== -1 && tRefundValueCol !== -1) {
-        const newRefund = triageData[r][tRefundValueCol];
-        mainSheet.getRange(mainRowNum, mRefundValueCol + 1).setValue(newRefund);
+        updates.push({
+          row: mainRowNum,
+          col: mRefundValueCol + 1,
+          value: triageData[r][tRefundValueCol]
+        });
       }
       if (mDiscountValueCol !== -1 && tDiscountValueCol !== -1) {
-        const newDiscount = triageData[r][tDiscountValueCol];
-        mainSheet.getRange(mainRowNum, mDiscountValueCol + 1).setValue(newDiscount);
+        updates.push({
+          row: mainRowNum,
+          col: mDiscountValueCol + 1,
+          value: triageData[r][tDiscountValueCol]
+        });
       }
       if (mModifiedCol !== -1 && tModifiedCol !== -1) {
-        const newModified = triageData[r][tModifiedCol];
-        mainSheet.getRange(mainRowNum, mModifiedCol + 1).setValue(newModified);
+        updates.push({
+          row: mainRowNum,
+          col: mModifiedCol + 1,
+          value: triageData[r][tModifiedCol]
+        });
       }
-
-      updated++;
     }
 
     // Mark for deletion (processed)
     rowsToDelete.push(r + 1); // 1-based
   }
 
-  // Delete processed rows from triage (bottom to top to preserve indices)
-  rowsToDelete.reverse().forEach(rowNum => {
-    triageSheet.deleteRow(rowNum);
-  });
+  // Batch write all updates
+  if (updates.length > 0) {
+    updates.forEach(upd => {
+      mainSheet.getRange(upd.row, upd.col).setValue(upd.value);
+    });
+  }
 
-  return { updated: updated, processed: rowsToDelete.length };
+  // Delete processed rows from triage (bottom to top to preserve indices)
+  if (rowsToDelete.length > 0) {
+    rowsToDelete.reverse().forEach(rowNum => {
+      triageSheet.deleteRow(rowNum);
+    });
+  }
+
+  return { updated: updates.length / 3, processed: rowsToDelete.length }; // Divide by 3 since we update 3 cols per order
 }
 
 // Convenience wrappers for menu
