@@ -13,6 +13,9 @@ const OSR_CFG = {
 
 function buildOrdersSummaryReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  logProgress('Summary Report', 'Reading clean orders data...');
+
   const clean = ss.getSheetByName(OSR_CFG.CLEAN_SHEET);
   if (!clean) throw new Error(`Missing "${OSR_CFG.CLEAN_SHEET}" tab.`);
 
@@ -23,6 +26,8 @@ function buildOrdersSummaryReport() {
   if (!startDate || !endDate) {
     throw new Error(`Date range not found. Enter start date in ${OSR_CFG.OUTPUT_SHEET}!${OSR_CFG.START_CELL} and end date in ${OSR_CFG.OUTPUT_SHEET}!${OSR_CFG.END_CELL}.`);
   }
+
+  logProgress('Summary Report', `Processing orders from ${formatDate_(startDate)} to ${formatDate_(endDate)}...`);
 
   const data = clean.getDataRange().getValues();
   if (data.length < 2) throw new Error(`No data found in "${OSR_CFG.CLEAN_SHEET}".`);
@@ -369,9 +374,10 @@ function buildOrdersSummaryReport() {
   outSheet.setFrozenRows(3);
   outSheet.autoResizeColumns(1, 10);
 
-  ss.toast(`Orders Summary updated: ${formatDate_(startDate)} to ${formatDate_(endDate)} | Orders: ${totalOrdersAllSources}`, "Summary", 6);
+  const summaryMsg = `Orders Summary built: ${totalOrdersAllSources} orders (${formatDate_(startDate)} to ${formatDate_(endDate)})`;
+  logProgress('Summary Report', summaryMsg);
   logImportEvent("Summary", `Built Orders_Summary_Report (${formatDate_(startDate)} to ${formatDate_(endDate)})`, totalOrdersAllSources);
-  return `Orders Summary built (${formatDate_(startDate)} to ${formatDate_(endDate)})`;
+  return summaryMsg;
 }
 
 function mustColStrict_(hm, name) {

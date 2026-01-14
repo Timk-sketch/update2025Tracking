@@ -21,7 +21,7 @@ function buildDiscountsReport() {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  ss.toast(`Building Discounts Report (${startDate} to ${endDate})...`, 'Discounts Report', 5);
+  logProgress('Discounts Report', `Building report for ${startDate} to ${endDate}...`);
 
   // Get or create the Discounts sheet
   let discountsSheet = ss.getSheetByName('Discounts Report');
@@ -266,7 +266,7 @@ function buildDiscountsReport() {
   }
 
   const msg = `Discounts Report built: ${discountedOrders.length} discounted orders found (${startDate} to ${endDate})`;
+  logProgress('Discounts Report', msg);
   logImportEvent('Discounts Report', msg, discountedOrders.length);
-  ss.toast(`✅ ${msg}`, 'Discounts Report', 8);
   return msg;
 }

@@ -17,6 +17,26 @@ function logImportEvent(source, message, count) {
   ]);
 }
 
+/**
+ * Logs progress with both toast notification and log entry.
+ * Use this for long-running operations to show user what's happening.
+ */
+function logProgress(source, message, showToast) {
+  showToast = showToast !== false; // Default true
+
+  // Log to sheet
+  logImportEvent(source, message);
+
+  // Show toast if enabled
+  if (showToast) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ss.toast(message, source, 2);
+  }
+
+  // Also log to console for debugging
+  console.log(`[${source}] ${message}`);
+}
+
 // IMPORTANT: expands sheet rows/cols BEFORE writing headers (fixes out-of-bounds)
 function getOrCreateSheetWithHeaders(sheetName, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();

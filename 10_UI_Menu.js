@@ -5,50 +5,100 @@
 // NEW: Combined Import and Update workflow
 function importAndUpdateAllOrders() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ss.toast('Importing new orders and checking for refunds...', 'Import & Update', 5);
+  const steps = [];
+
+  logProgress('Import & Update', '🚀 Starting full import and update workflow...');
 
   // Step 1: Import new orders (last 14 days)
-  importShopifyOrders();
-  importSquarespaceOrders();
+  logProgress('Import & Update', '📥 Step 1/8: Importing Shopify orders (last 14 days)...');
+  const shopifyImportMsg = importShopifyOrders();
+  steps.push('✓ Shopify Import: ' + shopifyImportMsg);
+
+  logProgress('Import & Update', '📥 Step 2/8: Importing Squarespace orders (last 14 days)...');
+  const squarespaceImportMsg = importSquarespaceOrders();
+  steps.push('✓ Squarespace Import: ' + squarespaceImportMsg);
 
   // Step 2: Update existing orders with refunds (last 90 days)
-  const shopifyMsg = updateShopifyOrdersWithRefunds();
-  const squarespaceMsg = updateSquarespaceOrdersWithRefunds();
+  logProgress('Import & Update', '🔄 Step 3/8: Checking Shopify refunds (last 90 days)...');
+  const shopifyRefundMsg = updateShopifyOrdersWithRefunds();
+  steps.push('✓ Shopify Refunds: ' + shopifyRefundMsg);
+
+  logProgress('Import & Update', '🔄 Step 4/8: Checking Squarespace refunds (last 90 days)...');
+  const squarespaceRefundMsg = updateSquarespaceOrdersWithRefunds();
+  steps.push('✓ Squarespace Refunds: ' + squarespaceRefundMsg);
 
   // Step 3: Rebuild clean master and reports
+  logProgress('Import & Update', '🧹 Step 5/8: Deduplicating orders...');
   deduplicateAllOrders();
-  buildAllOrdersClean();
-  buildOrdersSummaryReport();
-  buildCustomerOutreachList();
+  steps.push('✓ Deduplication complete');
 
-  const msg = `Import & Update complete!\nNew orders imported, refunds checked, reports rebuilt.`;
-  ss.toast('✅ ' + msg, 'Complete', 10);
+  logProgress('Import & Update', '📊 Step 6/8: Building clean master sheet...');
+  buildAllOrdersClean();
+  steps.push('✓ Clean master built');
+
+  logProgress('Import & Update', '📈 Step 7/8: Building summary report...');
+  buildOrdersSummaryReport();
+  steps.push('✓ Summary report built');
+
+  logProgress('Import & Update', '📧 Step 8/8: Building customer outreach list...');
+  buildCustomerOutreachList();
+  steps.push('✓ Outreach list built');
+
+  const msg = '✅ Import & Update Complete!\n\n' + steps.join('\n');
+  logProgress('Import & Update', '✅ All 8 steps complete!');
+  logImportEvent('Import & Update', 'Complete workflow finished', steps.length);
   return msg;
 }
 
 // NEW: Update-only function (for when you just want to check refunds without importing)
 function updateAllOrdersWithRefunds() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ss.toast('Checking for refunds in both platforms...', 'Update Orders', 5);
+  const steps = [];
+
+  logProgress('Update Orders', '🚀 Starting refund check workflow...');
 
   // Update both Shopify and Squarespace orders with refunds
+  logProgress('Update Orders', '🔄 Step 1/6: Checking Shopify refunds (last 90 days)...');
   const shopifyMsg = updateShopifyOrdersWithRefunds();
+  steps.push('✓ Shopify: ' + shopifyMsg);
+
+  logProgress('Update Orders', '🔄 Step 2/6: Checking Squarespace refunds (last 90 days)...');
   const squarespaceMsg = updateSquarespaceOrdersWithRefunds();
+  steps.push('✓ Squarespace: ' + squarespaceMsg);
 
   // Then rebuild clean master and reports
+  logProgress('Update Orders', '🧹 Step 3/6: Deduplicating orders...');
   deduplicateAllOrders();
-  buildAllOrdersClean();
-  buildOrdersSummaryReport();
-  buildCustomerOutreachList();
+  steps.push('✓ Deduplication complete');
 
-  const msg = `Orders updated with refunds:\n${shopifyMsg}\n${squarespaceMsg}\nReports rebuilt successfully.`;
-  ss.toast('✅ ' + msg, 'Update Complete', 10);
+  logProgress('Update Orders', '📊 Step 4/6: Building clean master sheet...');
+  buildAllOrdersClean();
+  steps.push('✓ Clean master built');
+
+  logProgress('Update Orders', '📈 Step 5/6: Building summary report...');
+  buildOrdersSummaryReport();
+  steps.push('✓ Summary report built');
+
+  logProgress('Update Orders', '📧 Step 6/6: Building customer outreach list...');
+  buildCustomerOutreachList();
+  steps.push('✓ Outreach list built');
+
+  const msg = '✅ Refund Check Complete!\n\n' + steps.join('\n');
+  logProgress('Update Orders', '✅ All 6 steps complete!');
+  logImportEvent('Update Orders', 'Refund check complete', steps.length);
   return msg;
 }
 
-// PIPELINE (sidebar) - Just calls the new combined function
+// PIPELINE (sidebar) - Runs the complete workflow with detailed progress
 function runFullPipelineFromSidebar() {
-  return importAndUpdateAllOrders();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.toast('Starting full workflow: Import → Update → Build All Reports', 'Full Pipeline', 3);
+
+  // Run the combined import and update
+  const importUpdateMsg = importAndUpdateAllOrders();
+
+  // Return detailed message
+  return 'Full Pipeline Complete!\n' + importUpdateMsg;
 }
 
 // LEGACY: Pipeline with full imports (now just calls the combined function)

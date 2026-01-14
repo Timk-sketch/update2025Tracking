@@ -21,7 +21,7 @@ function buildRefundsReport() {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  ss.toast(`Building Refunds Report (${startDate} to ${endDate})...`, 'Refunds Report', 5);
+  logProgress('Refunds Report', `Building report for ${startDate} to ${endDate}...`);
 
   // Get or create the Refunds sheet
   let refundsSheet = ss.getSheetByName('Refunds Report');
@@ -231,7 +231,7 @@ function buildRefundsReport() {
   }
 
   const msg = `Refunds Report built: ${refundedOrders.length} refunded orders found (${startDate} to ${endDate})`;
+  logProgress('Refunds Report', msg);
   logImportEvent('Refunds Report', msg, refundedOrders.length);
-  ss.toast(`✅ ${msg}`, 'Refunds Report', 8);
   return msg;
 }
