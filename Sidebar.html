@@ -160,6 +160,13 @@
     </div>
 
     <div class="row">
+      <button class="btn-secondary" id="btnRefunds" onclick="runBuildRefunds()">
+        💰 Build Refunds Report
+      </button>
+      <div class="help-text">Shows all refunded orders for the date range above</div>
+    </div>
+
+    <div class="row">
       <button class="btn-secondary" id="btnOutreach" onclick="runFn('buildCustomerOutreachList')">
         📧 Build Outreach List
       </button>
@@ -190,7 +197,7 @@
       function disableAll_(disabled) {
         const ids = [
           'btnSetRange','btnSaveMarketing','btnSaveOutreach',
-          'btnImportUpdate','btnUpdateOnly','btnSummary','btnOutreach','btnFull'
+          'btnImportUpdate','btnUpdateOnly','btnSummary','btnRefunds','btnOutreach','btnFull'
         ];
         ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
       }
@@ -254,6 +261,31 @@
               .withSuccessHandler(r => { log(`✓ ${r || 'Orders Summary built.'}`); disableAll_(false); })
               .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
               .buildOrdersSummaryReport();
+          })
+          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
+          .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
+      }
+
+      function runBuildRefunds() {
+        const preset = getPreset_();
+        const start = getStart_();
+        const end = getEnd_();
+
+        if (preset === 'custom' && (!start || !end)) {
+          log('✗ ERROR: Custom range requires Start Date + End Date.');
+          return;
+        }
+
+        log('Building Refunds Report (sets date range first)...');
+        disableAll_(true);
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            log(`✓ ${res}`);
+            google.script.run
+              .withSuccessHandler(r => { log(`✓ ${r || 'Refunds Report built.'}`); disableAll_(false); })
+              .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
+              .buildRefundsReport();
           })
           .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
           .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
