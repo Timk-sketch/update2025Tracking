@@ -137,12 +137,6 @@ function rebuildOrderToolsMenu() {
     .addItem('📊 Show Sidebar', 'showSidebar')
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Admin / Setup')
-      .addItem('⚠️ Import ALL Shopify History', 'importShopifyOrdersFullHistory')
-      .addItem('⚠️ Import ALL Squarespace History', 'importSquarespaceOrdersFullHistory')
-      .addSeparator()
-      .addItem('Check Full History Status', 'viewFullHistoryResumeStatus')
-      .addItem('Reset Full History Pointers', 'resetFullHistoryResumePointers')
-      .addSeparator()
       .addItem('📥 Import Shopify Orders Only', 'importShopifyOrders')
       .addItem('📥 Import Squarespace Orders Only', 'importSquarespaceOrders')
       .addSeparator()
@@ -156,35 +150,10 @@ function rebuildOrderToolsMenu() {
     .addToUi();
 }
 
-// Helper function to display full history status
-function viewFullHistoryResumeStatus() {
-  const status = getFullHistoryResumeStatus();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ss.toast(`Shopify: ${status.shopify}\nSquarespace: ${status.squarespace}`, 'Full History Status', 10);
-  return status;
-}
-
 function onOpen() {
   rebuildOrderToolsMenu();
 
   // Note: Simple triggers like onOpen() run with restricted authorization mode
   // and cannot show sidebars automatically. Users should click Order Tools > Show Sidebar
   // from the menu to open the sidebar manually.
-}
-
-function getFullHistoryResumeStatus() {
-  const shopifyNext = PROPS.getProperty('SHOPIFY_FULLHISTORY_NEXT_URL');
-  const squareCursor = PROPS.getProperty('SQUARESPACE_FULLHISTORY_CURSOR');
-
-  return {
-    shopify: shopifyNext ? 'IN PROGRESS (resumable)' : 'Not running / Complete',
-    squarespace: squareCursor ? 'IN PROGRESS (resumable)' : 'Not running / Complete'
-  };
-}
-
-function resetFullHistoryResumePointers() {
-  PROPS.deleteProperty('SHOPIFY_FULLHISTORY_NEXT_URL');
-  PROPS.deleteProperty('SQUARESPACE_FULLHISTORY_CURSOR');
-  SpreadsheetApp.getActiveSpreadsheet().toast('Full-history resume pointers cleared.', 'Reset', 5);
-  return 'Resume pointers cleared.';
 }
