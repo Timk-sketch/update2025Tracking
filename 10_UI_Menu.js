@@ -36,16 +36,24 @@ function importAndUpdateAllOrders() {
   buildAllOrdersClean();
   steps.push('✓ Clean master built');
 
-  logProgress('Import & Update', '📈 Step 7/8: Building summary report...');
+  logProgress('Import & Update', '📈 Step 7/10: Building summary report...');
   buildOrdersSummaryReport();
   steps.push('✓ Summary report built');
 
-  logProgress('Import & Update', '📧 Step 8/8: Building customer outreach list...');
+  logProgress('Import & Update', '💰 Step 8/10: Building refunds report...');
+  buildRefundsReport();
+  steps.push('✓ Refunds report built');
+
+  logProgress('Import & Update', '🏷️ Step 9/10: Building discounts report...');
+  buildDiscountsReport();
+  steps.push('✓ Discounts report built');
+
+  logProgress('Import & Update', '📧 Step 10/10: Building customer outreach list...');
   buildCustomerOutreachList();
   steps.push('✓ Outreach list built');
 
   const msg = '✅ Import & Update Complete!\n\n' + steps.join('\n');
-  logProgress('Import & Update', '✅ All 8 steps complete!');
+  logProgress('Import & Update', '✅ All 10 steps complete!');
   logImportEvent('Import & Update', 'Complete workflow finished', steps.length);
   return msg;
 }
