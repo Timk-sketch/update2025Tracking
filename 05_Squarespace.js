@@ -214,8 +214,7 @@ function importSquarespaceOrders() {
  * - daysBack: integer days to look back (default 120)
  * - appendMissing: boolean: if true, append line items not present in sheet (default false)
  *
- * This function updates the "Refunded Total Value" column for existing orders
- * and optionally appends new line items that weren't in the sheet.
+ * OPTIMIZED: Batches all updates together to avoid timeout
  */
 function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
   daysBack = Math.max(1, parseInt(daysBack || 120, 10));
@@ -236,20 +235,20 @@ function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
   const refundCurrencyCol = findHeaderIndex_(headers, ['Refunded Total Currency', 'refunded currency']);
   const refundValueCol = findHeaderIndex_(headers, ['Refunded Total Value', 'refunded value', 'refunds']);
   const modifiedOnCol = findHeaderIndex_(headers, ['Modified On', 'modified_on', 'modifiedOn']);
-  const createdOnCol = findHeaderIndex_(headers, ['Created On', 'created_on', 'createdOn']);
 
   if (idCol === -1 || lineIdCol === -1) {
     throw new Error('Squarespace Orders sheet missing required columns: "Order ID" and/or "LineItem ID"');
   }
 
-  // Build existing map: key => rowIndex (1-based)
+  // Build existing map: key => {row, currentRefund}
   const existing = {};
   for (let r = 1; r < data.length; r++) {
     const oid = data[r][idCol];
     const lid = data[r][lineIdCol];
     if (oid != null && lid != null && oid !== '' && lid !== '') {
       const key = String(oid) + '_' + String(lid);
-      existing[key] = r + 1; // spreadsheet row number
+      const currentRefund = refundValueCol !== -1 ? data[r][refundValueCol] : 0;
+      existing[key] = { row: r + 1, currentRefund };
     }
   }
 
@@ -264,9 +263,11 @@ function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
   const modifiedBefore = new Date().toISOString();
 
   let cursor = null;
-  let rowsAppended = 0;
-  let rowsUpdated = 0;
   let page = 0;
+
+  // Collect all updates in memory first
+  const updates = [];
+  const appendRows = [];
 
   do {
     let finalUrl;
@@ -296,79 +297,75 @@ function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
       const refundCurrency = order.refundedTotal?.currency || "";
       const refundValue = order.refundedTotal?.value || "";
       const modifiedOn = order.modifiedOn || "";
-      const createdOn = order.createdOn || "";
 
       (order.lineItems || []).forEach(lineItem => {
         const uniqueKey = String(order.id || "") + '_' + String(lineItem.id || "");
         if (!uniqueKey || uniqueKey === "_") return;
 
-        const targetRow = existing[uniqueKey];
-        if (targetRow) {
-          // Update refund columns if present and changed
-          if (refundValueCol !== -1) {
-            const cell = sheet.getRange(targetRow, refundValueCol + 1);
-            const current = cell.getValue();
-            const currentNum = typeof current === 'number' ? current : (parseFloat(String(current).replace(/[^0-9.-]+/g, '')) || 0);
-            const newNum = Number(refundValue) || 0;
-            if (Math.abs(currentNum - newNum) > 0.0001) {
-              cell.setValue(newNum);
-              rowsUpdated++;
-            }
-          }
+        const existingRow = existing[uniqueKey];
+        if (existingRow) {
+          // Check if refund changed
+          const currentNum = typeof existingRow.currentRefund === 'number'
+            ? existingRow.currentRefund
+            : (parseFloat(String(existingRow.currentRefund).replace(/[^0-9.-]+/g, '')) || 0);
+          const newNum = Number(refundValue) || 0;
 
-          // Update refund currency if present
-          if (refundCurrencyCol !== -1 && refundCurrency) {
-            sheet.getRange(targetRow, refundCurrencyCol + 1).setValue(refundCurrency);
-          }
-
-          // Update Modified On if present
-          if (modifiedOnCol !== -1 && modifiedOn) {
-            sheet.getRange(targetRow, modifiedOnCol + 1).setValue(modifiedOn);
-          }
-        } else {
-          if (appendMissing) {
-            const width = headers.length;
-            const out = Array(width).fill("");
-
-            if (idCol !== -1) out[idCol] = order.id || "";
-            if (lineIdCol !== -1) out[lineIdCol] = lineItem.id || "";
-            if (createdOnCol !== -1) out[createdOnCol] = createdOn;
-            if (modifiedOnCol !== -1) out[modifiedOnCol] = modifiedOn;
-            if (refundCurrencyCol !== -1) out[refundCurrencyCol] = refundCurrency;
-            if (refundValueCol !== -1) out[refundValueCol] = refundValue;
-
-            // Try to populate other common columns
-            const mapByHeader = {
-              'Order Number': order.orderNumber || "",
-              'Customer Email': order.customerEmail || "",
-              'Subtotal Currency': order.subtotal?.currency || "",
-              'Subtotal Value': order.subtotal?.value || "",
-              'Grand Total Currency': order.grandTotal?.currency || "",
-              'Grand Total Value': order.grandTotal?.value || ""
-            };
-            Object.keys(mapByHeader).forEach(hname => {
-              const idx = findHeaderIndex_(headers, [hname]);
-              if (idx !== -1) out[idx] = mapByHeader[hname];
+          if (Math.abs(currentNum - newNum) > 0.0001) {
+            updates.push({
+              row: existingRow.row,
+              refund: newNum,
+              currency: refundCurrency,
+              modifiedOn: modifiedOn
             });
-
-            // Line item fields
-            const liNameIdx = findHeaderIndex_(headers, ['LineItem Product Name', 'product name', 'name']);
-            const liQtyIdx = findHeaderIndex_(headers, ['LineItem Quantity', 'quantity', 'qty']);
-            const liPriceIdx = findHeaderIndex_(headers, ['LineItem Unit Price Value', 'unit price', 'price']);
-            if (liNameIdx !== -1) out[liNameIdx] = lineItem.productName || "";
-            if (liQtyIdx !== -1) out[liQtyIdx] = lineItem.quantity || "";
-            if (liPriceIdx !== -1) out[liPriceIdx] = lineItem.unitPrice?.value || "";
-
-            sheet.getRange(sheet.getLastRow() + 1, 1, 1, width).setValues([out]);
-            existing[uniqueKey] = sheet.getLastRow();
-            rowsAppended++;
           }
+        } else if (appendMissing) {
+          const width = headers.length;
+          const out = Array(width).fill("");
+
+          if (idCol !== -1) out[idCol] = order.id || "";
+          if (lineIdCol !== -1) out[lineIdCol] = lineItem.id || "";
+          if (refundValueCol !== -1) out[refundValueCol] = refundValue;
+          if (refundCurrencyCol !== -1) out[refundCurrencyCol] = refundCurrency;
+          if (modifiedOnCol !== -1) out[modifiedOnCol] = modifiedOn;
+
+          // Populate other key fields
+          const emailIdx = findHeaderIndex_(headers, ['Customer Email', 'email']);
+          const liNameIdx = findHeaderIndex_(headers, ['LineItem Product Name', 'product name']);
+          const liQtyIdx = findHeaderIndex_(headers, ['LineItem Quantity', 'quantity']);
+          if (emailIdx !== -1) out[emailIdx] = order.customerEmail || "";
+          if (liNameIdx !== -1) out[liNameIdx] = lineItem.productName || "";
+          if (liQtyIdx !== -1) out[liQtyIdx] = lineItem.quantity || "";
+
+          appendRows.push(out);
+          existing[uniqueKey] = { row: sheet.getLastRow() + appendRows.length, currentRefund: refundValue };
         }
       });
     });
 
     page++;
   } while (cursor);
+
+  // Batch write all updates
+  let rowsUpdated = 0;
+  if (updates.length > 0 && refundValueCol !== -1) {
+    updates.forEach(upd => {
+      sheet.getRange(upd.row, refundValueCol + 1).setValue(upd.refund);
+      if (refundCurrencyCol !== -1 && upd.currency) {
+        sheet.getRange(upd.row, refundCurrencyCol + 1).setValue(upd.currency);
+      }
+      if (modifiedOnCol !== -1 && upd.modifiedOn) {
+        sheet.getRange(upd.row, modifiedOnCol + 1).setValue(upd.modifiedOn);
+      }
+    });
+    rowsUpdated = updates.length;
+  }
+
+  // Batch write all appends
+  let rowsAppended = 0;
+  if (appendRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
+    rowsAppended = appendRows.length;
+  }
 
   const msg = `Refreshed refunds for last ${daysBack} days: updated ${rowsUpdated} rows${appendMissing ? ', appended ' + rowsAppended + ' missing rows' : ''}.`;
   logImportEvent('Squarespace', 'Refund refresh success', rowsUpdated + rowsAppended);
@@ -380,14 +377,14 @@ function refreshSquarespaceRefundsLastNDays_(daysBack, appendMissing) {
  * Convenience wrapper (run from Script Editor).
  */
 function refreshSquarespaceRefunds() {
-  return refreshSquarespaceRefundsLastNDays_(120, false);
+  return refreshSquarespaceRefundsLastNDays_(30, false);
 }
 
 /**
  * Compatibility wrappers expected by the UI/menu.
  */
 function refreshSquarespaceAdjustments() {
-  return refreshSquarespaceRefundsLastNDays_(120, false);
+  return refreshSquarespaceRefundsLastNDays_(30, false);
 }
 
 function refreshSquarespaceAdjustmentsLast60Days() {

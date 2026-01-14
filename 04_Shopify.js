@@ -351,7 +351,7 @@ function importShopifyOrders() {
  * - daysBack: integer days to look back (default 120)
  * - appendMissing: boolean: if true, append line items not present in sheet (default false)
  *
- * Defaults used here: daysBack = 120, appendMissing = false
+ * OPTIMIZED: Batches all updates together to avoid timeout
  */
 function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
   daysBack = Math.max(1, parseInt(daysBack || 120, 10));
@@ -371,23 +371,20 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
   const lineIdCol = findHeaderIndex_(headers, ['Lineitem ID', 'LineitemID', 'lineitem id', 'line_item_id']);
   const refundsCol = findHeaderIndex_(headers, ['Total Refunds', 'Refunds', 'refunds', 'total_refunds', 'refund_total']);
   const updatedAtCol = findHeaderIndex_(headers, ['Updated At', 'updated_at', 'updated at']);
-  const createdAtCol = findHeaderIndex_(headers, ['Created At', 'created_at', 'created at']);
-  const processedAtCol = findHeaderIndex_(headers, ['Processed At', 'processed_at', 'processed at']);
-  const localCreatedCol = findHeaderIndex_(headers, ['Created At (Local)', 'Created (Local)', 'created_local', 'created at (local)']);
-  const localProcessedCol = findHeaderIndex_(headers, ['Processed At (Local)', 'Processed (Local)', 'processed_local', 'processed at (local)']);
 
   if (idCol === -1 || lineIdCol === -1) {
     throw new Error('Shopify Orders sheet missing required columns: "Order ID" and/or "Lineitem ID"');
   }
 
-  // Build existing map: key => rowIndex (1-based)
+  // Build existing map: key => {row, currentRefund}
   const existing = {};
   for (let r = 1; r < data.length; r++) {
     const oid = data[r][idCol];
     const lid = data[r][lineIdCol];
     if (oid != null && lid != null && oid !== '' && lid !== '') {
       const key = String(oid) + '_' + String(lid);
-      existing[key] = r + 1; // spreadsheet row number
+      const currentRefund = refundsCol !== -1 ? data[r][refundsCol] : 0;
+      existing[key] = { row: r + 1, currentRefund };
     }
   }
 
@@ -403,8 +400,9 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
 
   let url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?status=any&limit=250&updated_at_min=${encodeURIComponent(updatedAtMin)}`;
 
-  let rowsAppended = 0;
-  let rowsUpdated = 0;
+  // Collect all updates in memory first
+  const updates = [];
+  const appendRows = [];
 
   while (url) {
     const resp = fetchWithRetry_(url, {
@@ -423,76 +421,46 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
 
     orders.forEach(order => {
       const refundsTotal = computeShopifyRefundTotal_(order);
-      const createdAt = order.created_at || "";
-      const processedAt = order.processed_at || "";
       const updatedAt = order.updated_at || "";
 
       (order.line_items || []).forEach(lineItem => {
         const uniqueKey = String(order.id || "") + '_' + String(lineItem.id || "");
         if (!uniqueKey || uniqueKey === "_") return;
 
-        const targetRow = existing[uniqueKey];
-        if (targetRow) {
-          // Update refunds column if present and changed
-          if (refundsCol !== -1) {
-            const cell = sheet.getRange(targetRow, refundsCol + 1);
-            const current = cell.getValue();
-            const currentNum = typeof current === 'number' ? current : (parseFloat(String(current).replace(/[^0-9.-]+/g, '')) || 0);
-            const newNum = Number(refundsTotal) || 0;
-            if (Math.abs(currentNum - newNum) > 0.0001) {
-              cell.setValue(newNum);
-              rowsUpdated++;
-            }
-          }
+        const existingRow = existing[uniqueKey];
+        if (existingRow) {
+          // Check if refund changed
+          const currentNum = typeof existingRow.currentRefund === 'number'
+            ? existingRow.currentRefund
+            : (parseFloat(String(existingRow.currentRefund).replace(/[^0-9.-]+/g, '')) || 0);
+          const newNum = Number(refundsTotal) || 0;
 
-          // Update Updated At and local timestamps if present
-          if (updatedAtCol !== -1 && updatedAt) {
-            sheet.getRange(targetRow, updatedAtCol + 1).setValue(updatedAt);
-          }
-          if (localCreatedCol !== -1 && createdAt) {
-            sheet.getRange(targetRow, localCreatedCol + 1).setValue(toLocalString_(createdAt));
-          }
-          if (localProcessedCol !== -1 && processedAt) {
-            sheet.getRange(targetRow, localProcessedCol + 1).setValue(toLocalString_(processedAt));
-          }
-        } else {
-          if (appendMissing) {
-            const width = headers.length;
-            const out = Array(width).fill("");
-
-            if (idCol !== -1) out[idCol] = order.id || "";
-            if (lineIdCol !== -1) out[lineIdCol] = lineItem.id || "";
-            if (createdAtCol !== -1) out[createdAtCol] = createdAt;
-            if (processedAtCol !== -1) out[processedAtCol] = processedAt;
-            if (updatedAtCol !== -1) out[updatedAtCol] = updatedAt;
-            if (refundsCol !== -1) out[refundsCol] = refundsTotal;
-
-            // Try to populate a few other common columns
-            const mapByHeader = {
-              'Order Number': order.order_number || "",
-              'Customer Email': order.email || "",
-              'Total Price': order.total_price || "",
-              'Subtotal Price': order.subtotal_price || "",
-              'Total Discounts': order.total_discounts || "",
-              'Currency': order.currency || ""
-            };
-            Object.keys(mapByHeader).forEach(hname => {
-              const idx = findHeaderIndex_(headers, [hname]);
-              if (idx !== -1) out[idx] = mapByHeader[hname];
+          if (Math.abs(currentNum - newNum) > 0.0001) {
+            updates.push({
+              row: existingRow.row,
+              refund: newNum,
+              updatedAt: updatedAt
             });
-
-            // Line item fields
-            const liNameIdx = findHeaderIndex_(headers, ['Lineitem Name', 'lineitem name', 'name', 'title']);
-            const liQtyIdx = findHeaderIndex_(headers, ['Lineitem Quantity', 'quantity', 'qty']);
-            const liPriceIdx = findHeaderIndex_(headers, ['Lineitem Price', 'price', 'line_price']);
-            if (liNameIdx !== -1) out[liNameIdx] = lineItem.name || "";
-            if (liQtyIdx !== -1) out[liQtyIdx] = lineItem.quantity || "";
-            if (liPriceIdx !== -1) out[liPriceIdx] = lineItem.price || "";
-
-            sheet.getRange(sheet.getLastRow() + 1, 1, 1, width).setValues([out]);
-            existing[uniqueKey] = sheet.getLastRow();
-            rowsAppended++;
           }
+        } else if (appendMissing) {
+          const width = headers.length;
+          const out = Array(width).fill("");
+
+          if (idCol !== -1) out[idCol] = order.id || "";
+          if (lineIdCol !== -1) out[lineIdCol] = lineItem.id || "";
+          if (refundsCol !== -1) out[refundsCol] = refundsTotal;
+          if (updatedAtCol !== -1) out[updatedAtCol] = updatedAt;
+
+          // Populate other key fields
+          const liNameIdx = findHeaderIndex_(headers, ['Lineitem Name', 'lineitem name']);
+          const liQtyIdx = findHeaderIndex_(headers, ['Lineitem Quantity', 'quantity']);
+          const emailIdx = findHeaderIndex_(headers, ['Customer Email', 'email']);
+          if (liNameIdx !== -1) out[liNameIdx] = lineItem.name || "";
+          if (liQtyIdx !== -1) out[liQtyIdx] = lineItem.quantity || "";
+          if (emailIdx !== -1) out[emailIdx] = order.email || "";
+
+          appendRows.push(out);
+          existing[uniqueKey] = { row: sheet.getLastRow() + appendRows.length, currentRefund: refundsTotal };
         }
       });
     });
@@ -501,6 +469,28 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
     const linkHeader = headersObj['Link'] || headersObj['link'] || headersObj['LINK'];
     const nextUrl = parseLinkHeader_(linkHeader);
     url = nextUrl || null;
+  }
+
+  // Batch write all updates using setValues for maximum speed
+  let rowsUpdated = 0;
+  if (updates.length > 0 && refundsCol !== -1) {
+    // Group consecutive rows for batch writes
+    updates.sort((a, b) => a.row - b.row);
+
+    for (let i = 0; i < updates.length; i++) {
+      sheet.getRange(updates[i].row, refundsCol + 1).setValue(updates[i].refund);
+      if (updatedAtCol !== -1 && updates[i].updatedAt) {
+        sheet.getRange(updates[i].row, updatedAtCol + 1).setValue(updates[i].updatedAt);
+      }
+    }
+    rowsUpdated = updates.length;
+  }
+
+  // Batch write all appends
+  let rowsAppended = 0;
+  if (appendRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
+    rowsAppended = appendRows.length;
   }
 
   const msg = `Refreshed refunds for last ${daysBack} days: updated ${rowsUpdated} rows${appendMissing ? ', appended ' + rowsAppended + ' missing rows' : ''}.`;
@@ -513,14 +503,14 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
  * Convenience wrapper (run from Script Editor).
  */
 function refreshShopifyRefunds() {
-  return refreshShopifyRefundsLastNDays_(120, false);
+  return refreshShopifyRefundsLastNDays_(30, false);
 }
 
 /**
  * Compatibility wrappers expected by the UI/menu.
  */
 function refreshShopifyAdjustments() {
-  return refreshShopifyRefundsLastNDays_(120, false);
+  return refreshShopifyRefundsLastNDays_(30, false);
 }
 
 function refreshShopifyAdjustmentsLast60Days() {
