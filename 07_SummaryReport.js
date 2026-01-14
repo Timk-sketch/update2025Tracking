@@ -125,14 +125,17 @@ function buildOrdersSummaryReport() {
       if (!o) {
         o = { platform, orderId, grossLines: 0, discount: 0, refund: 0, net: 0, units: 0 };
         orderAgg.set(keyO, o);
+
+        // ✅ FIX: Only add order-level totals ONCE when we first see the order
+        // These are order-level values that repeat for every line item in All_Orders_Clean
+        o.discount = n_(row[COL.order_discount]);
+        o.refund = n_(row[COL.order_refund]);
+        o.net = n_(row[COL.order_net]);
       }
+
+      // Always accumulate line-level values
       o.grossLines += rev;
       o.units += qty;
-
-      // NOTE: If these values repeat per line item in All_Orders_Clean, they will overcount.
-      o.discount += n_(row[COL.order_discount]);
-      o.refund += n_(row[COL.order_refund]);
-      o.net += n_(row[COL.order_net]);
     }
   }
 
