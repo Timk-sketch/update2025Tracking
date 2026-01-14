@@ -2,7 +2,31 @@
 // 10_UI_Menu.gs — Pipeline + Sidebar + Menu + onOpen
 // =====================================================
 
-// NEW: Simplified Update Orders function (replaces triage system)
+// NEW: Combined Import and Update workflow
+function importAndUpdateAllOrders() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.toast('Importing new orders and checking for refunds...', 'Import & Update', 5);
+
+  // Step 1: Import new orders (last 14 days)
+  importShopifyOrders();
+  importSquarespaceOrders();
+
+  // Step 2: Update existing orders with refunds (last 90 days)
+  const shopifyMsg = updateShopifyOrdersWithRefunds();
+  const squarespaceMsg = updateSquarespaceOrdersWithRefunds();
+
+  // Step 3: Rebuild clean master and reports
+  deduplicateAllOrders();
+  buildAllOrdersClean();
+  buildOrdersSummaryReport();
+  buildCustomerOutreachList();
+
+  const msg = `Import & Update complete!\nNew orders imported, refunds checked, reports rebuilt.`;
+  ss.toast('✅ ' + msg, 'Complete', 10);
+  return msg;
+}
+
+// NEW: Update-only function (for when you just want to check refunds without importing)
 function updateAllOrdersWithRefunds() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   ss.toast('Checking for refunds in both platforms...', 'Update Orders', 5);
@@ -22,30 +46,14 @@ function updateAllOrdersWithRefunds() {
   return msg;
 }
 
-// PIPELINE (sidebar)
+// PIPELINE (sidebar) - Just calls the new combined function
 function runFullPipelineFromSidebar() {
-  // Only refresh refunds/discounts (much faster than full import)
-  // Full imports should be run separately when needed
-  refreshShopifyAdjustments();
-  refreshSquarespaceAdjustments();
-  deduplicateAllOrders();
-  buildAllOrdersClean();
-  buildOrdersSummaryReport();
-  buildCustomerOutreachList();
-  return "Full pipeline complete (Refresh Refunds/Discounts → Dedup → Clean → Summary → Outreach)";
+  return importAndUpdateAllOrders();
 }
 
-// NEW: Pipeline with full imports (slower, use when you need to import new orders)
+// LEGACY: Pipeline with full imports (now just calls the combined function)
 function runFullPipelineWithImports() {
-  importShopifyOrders();
-  importSquarespaceOrders();
-  refreshShopifyAdjustments();
-  refreshSquarespaceAdjustments();
-  deduplicateAllOrders();
-  buildAllOrdersClean();
-  buildOrdersSummaryReport();
-  buildCustomerOutreachList();
-  return "Full pipeline with imports complete (Import → Refresh → Dedup → Clean → Summary → Outreach)";
+  return importAndUpdateAllOrders();
 }
 
 function runFullPipelineTightLast60Days() {
@@ -78,16 +86,17 @@ function rebuildOrderToolsMenu() {
   ui.createMenu('Order Tools')
     .addItem('Show Sidebar', 'showSidebar')
     .addSeparator()
-    .addItem('🔄 Update Orders (Check Refunds)', 'updateAllOrdersWithRefunds')
-    .addSeparator()
-    .addItem('📥 Import Shopify Orders (NEW)', 'importShopifyOrders')
-    .addItem('📥 Import Squarespace Orders (NEW)', 'importSquarespaceOrders')
+    .addItem('⚡ Import & Update Orders', 'importAndUpdateAllOrders')
+    .addItem('🔄 Update Orders (Refunds Only)', 'updateAllOrdersWithRefunds')
     .addSeparator()
     .addItem('Build Clean Master (All_Orders_Clean)', 'buildAllOrdersClean')
     .addItem('Build Orders Summary Report', 'buildOrdersSummaryReport')
     .addItem('Build Customer Outreach List', 'buildCustomerOutreachList')
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Admin / Advanced')
+      .addItem('📥 Import Shopify Orders Only', 'importShopifyOrders')
+      .addItem('📥 Import Squarespace Orders Only', 'importSquarespaceOrders')
+      .addSeparator()
       .addItem('⚠️ Import ALL Shopify History', 'importShopifyOrdersFullHistory')
       .addItem('⚠️ Import ALL Squarespace History', 'importSquarespaceOrdersFullHistory')
       .addSeparator()
