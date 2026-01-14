@@ -223,7 +223,10 @@ function rebuildOrderToolsMenu() {
       .addItem('Refresh Squarespace Refunds (60 days)', 'refreshSquarespaceAdjustmentsLast60Days')
       .addSeparator()
       .addItem('Deduplicate All Orders', 'deduplicateAllOrders')
-      .addItem('Build Clean Master Only', 'buildAllOrdersClean'))
+      .addItem('Build Clean Master Only', 'buildAllOrdersClean')
+      .addSeparator()
+      .addItem('🔍 Check Data Coverage', 'diagnosticCheckDataCoverage')
+      .addItem('🔍 Check Excluded Orders', 'diagnosticCheckExcludedOrders'))
     .addToUi();
 }
 
