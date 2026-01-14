@@ -264,10 +264,17 @@
         google.script.run
           .withSuccessHandler(function(res) {
             log(`✓ ${res}`);
+            log('Building clean master sheet...');
             google.script.run
-              .withSuccessHandler(r => { log(`✓ ${r || 'Orders Summary built.'}`); disableAll_(false); })
-              .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
-              .buildOrdersSummaryReport();
+              .withSuccessHandler(function() {
+                log('✓ Clean master built.');
+                google.script.run
+                  .withSuccessHandler(r => { log(`✓ ${r || 'Orders Summary built.'}`); disableAll_(false); })
+                  .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
+                  .buildOrdersSummaryReport();
+              })
+              .withFailureHandler(e => { log(`✗ ERROR building clean master: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
+              .buildAllOrdersClean();
           })
           .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
           .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
