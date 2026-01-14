@@ -167,8 +167,9 @@ function viewFullHistoryResumeStatus() {
 function onOpen() {
   rebuildOrderToolsMenu();
 
-  // Automatically show sidebar when spreadsheet opens
-  showSidebar();
+  // Note: Simple triggers like onOpen() run with restricted authorization mode
+  // and cannot show sidebars automatically. Users should click Order Tools > Show Sidebar
+  // from the menu to open the sidebar manually.
 }
 
 function getFullHistoryResumeStatus() {
