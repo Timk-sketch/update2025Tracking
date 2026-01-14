@@ -166,6 +166,9 @@ function viewFullHistoryResumeStatus() {
 
 function onOpen() {
   rebuildOrderToolsMenu();
+
+  // Automatically show sidebar when spreadsheet opens
+  showSidebar();
 }
 
 function getFullHistoryResumeStatus() {
