@@ -345,11 +345,13 @@ function importShopifyOrders() {
 }
 
 /**
- * Refresh refunds (and optional small set of columns) for orders UPDATED in the last daysBack days.
+ * Refresh refunds using Shopify's financial_status filters (OPTIMIZED).
+ * Only fetches orders with refunds or partial refunds.
  * - daysBack: integer days to look back (default 120)
  * - appendMissing: boolean: if true, append line items not present in sheet (default false)
  *
- * OPTIMIZED: Batches all updates together to avoid timeout
+ * NEW APPROACH: Uses financial_status=refunded and financial_status=partially_refunded
+ * to fetch only orders with refunds, making this MUCH faster than checking all orders.
  */
 function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
   daysBack = Math.max(1, parseInt(daysBack || 120, 10));
@@ -396,83 +398,88 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
   d.setDate(d.getDate() - daysBack);
   const updatedAtMin = d.toISOString();
 
-  let url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?status=any&limit=250&updated_at_min=${encodeURIComponent(updatedAtMin)}`;
-
   // Collect all updates in memory first
   const updates = [];
   const appendRows = [];
 
-  while (url) {
-    const resp = fetchWithRetry_(url, {
-      method: "get",
-      headers: { "X-Shopify-Access-Token": apiKey },
-      muteHttpExceptions: true
-    });
+  // Fetch orders with financial_status=refunded OR partially_refunded
+  // This is MUCH faster than fetching all orders
+  const financialStatuses = ['refunded', 'partially_refunded'];
 
-    if (resp.getResponseCode() !== 200) {
-      throw new Error(`Shopify API error (${resp.getResponseCode()}): ${resp.getContentText()}`);
-    }
+  for (const status of financialStatuses) {
+    let url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?status=any&financial_status=${status}&limit=250&updated_at_min=${encodeURIComponent(updatedAtMin)}`;
 
-    const json = JSON.parse(resp.getContentText());
-    const orders = json.orders || [];
-    if (!orders.length) break;
-
-    orders.forEach(order => {
-      const refundsTotal = computeShopifyRefundTotal_(order);
-      const updatedAt = order.updated_at || "";
-
-      (order.line_items || []).forEach(lineItem => {
-        const uniqueKey = String(order.id || "") + '_' + String(lineItem.id || "");
-        if (!uniqueKey || uniqueKey === "_") return;
-
-        const existingRow = existing[uniqueKey];
-        if (existingRow) {
-          // Check if refund changed
-          const currentNum = typeof existingRow.currentRefund === 'number'
-            ? existingRow.currentRefund
-            : (parseFloat(String(existingRow.currentRefund).replace(/[^0-9.-]+/g, '')) || 0);
-          const newNum = Number(refundsTotal) || 0;
-
-          if (Math.abs(currentNum - newNum) > 0.0001) {
-            updates.push({
-              row: existingRow.row,
-              refund: newNum,
-              updatedAt: updatedAt
-            });
-          }
-        } else if (appendMissing) {
-          const width = headers.length;
-          const out = Array(width).fill("");
-
-          if (idCol !== -1) out[idCol] = order.id || "";
-          if (lineIdCol !== -1) out[lineIdCol] = lineItem.id || "";
-          if (refundsCol !== -1) out[refundsCol] = refundsTotal;
-          if (updatedAtCol !== -1) out[updatedAtCol] = updatedAt;
-
-          // Populate other key fields
-          const liNameIdx = findHeaderIndex_(headers, ['Lineitem Name', 'lineitem name']);
-          const liQtyIdx = findHeaderIndex_(headers, ['Lineitem Quantity', 'quantity']);
-          const emailIdx = findHeaderIndex_(headers, ['Customer Email', 'email']);
-          if (liNameIdx !== -1) out[liNameIdx] = lineItem.name || "";
-          if (liQtyIdx !== -1) out[liQtyIdx] = lineItem.quantity || "";
-          if (emailIdx !== -1) out[emailIdx] = order.email || "";
-
-          appendRows.push(out);
-          existing[uniqueKey] = { row: sheet.getLastRow() + appendRows.length, currentRefund: refundsTotal };
-        }
+    while (url) {
+      const resp = fetchWithRetry_(url, {
+        method: "get",
+        headers: { "X-Shopify-Access-Token": apiKey },
+        muteHttpExceptions: true
       });
-    });
 
-    const headersObj = resp.getHeaders ? resp.getHeaders() : {};
-    const linkHeader = headersObj['Link'] || headersObj['link'] || headersObj['LINK'];
-    const nextUrl = parseLinkHeader_(linkHeader);
-    url = nextUrl || null;
+      if (resp.getResponseCode() !== 200) {
+        throw new Error(`Shopify API error (${resp.getResponseCode()}): ${resp.getContentText()}`);
+      }
+
+      const json = JSON.parse(resp.getContentText());
+      const orders = json.orders || [];
+      if (!orders.length) break;
+
+      orders.forEach(order => {
+        const refundsTotal = computeShopifyRefundTotal_(order);
+        const updatedAt = order.updated_at || "";
+
+        (order.line_items || []).forEach(lineItem => {
+          const uniqueKey = String(order.id || "") + '_' + String(lineItem.id || "");
+          if (!uniqueKey || uniqueKey === "_") return;
+
+          const existingRow = existing[uniqueKey];
+          if (existingRow) {
+            // Check if refund changed
+            const currentNum = typeof existingRow.currentRefund === 'number'
+              ? existingRow.currentRefund
+              : (parseFloat(String(existingRow.currentRefund).replace(/[^0-9.-]+/g, '')) || 0);
+            const newNum = Number(refundsTotal) || 0;
+
+            if (Math.abs(currentNum - newNum) > 0.0001) {
+              updates.push({
+                row: existingRow.row,
+                refund: newNum,
+                updatedAt: updatedAt
+              });
+            }
+          } else if (appendMissing) {
+            const width = headers.length;
+            const out = Array(width).fill("");
+
+            if (idCol !== -1) out[idCol] = order.id || "";
+            if (lineIdCol !== -1) out[lineIdCol] = lineItem.id || "";
+            if (refundsCol !== -1) out[refundsCol] = refundsTotal;
+            if (updatedAtCol !== -1) out[updatedAtCol] = updatedAt;
+
+            // Populate other key fields
+            const liNameIdx = findHeaderIndex_(headers, ['Lineitem Name', 'lineitem name']);
+            const liQtyIdx = findHeaderIndex_(headers, ['Lineitem Quantity', 'quantity']);
+            const emailIdx = findHeaderIndex_(headers, ['Customer Email', 'email']);
+            if (liNameIdx !== -1) out[liNameIdx] = lineItem.name || "";
+            if (liQtyIdx !== -1) out[liQtyIdx] = lineItem.quantity || "";
+            if (emailIdx !== -1) out[emailIdx] = order.email || "";
+
+            appendRows.push(out);
+            existing[uniqueKey] = { row: sheet.getLastRow() + appendRows.length, currentRefund: refundsTotal };
+          }
+        });
+      });
+
+      const headersObj = resp.getHeaders ? resp.getHeaders() : {};
+      const linkHeader = headersObj['Link'] || headersObj['link'] || headersObj['LINK'];
+      const nextUrl = parseLinkHeader_(linkHeader);
+      url = nextUrl || null;
+    }
   }
 
-  // Batch write all updates using setValues for maximum speed
+  // Batch write all updates
   let rowsUpdated = 0;
   if (updates.length > 0 && refundsCol !== -1) {
-    // Group consecutive rows for batch writes
     updates.sort((a, b) => a.row - b.row);
 
     for (let i = 0; i < updates.length; i++) {
@@ -491,8 +498,8 @@ function refreshShopifyRefundsLastNDays_(daysBack, appendMissing) {
     rowsAppended = appendRows.length;
   }
 
-  const msg = `Refreshed refunds for last ${daysBack} days: updated ${rowsUpdated} rows${appendMissing ? ', appended ' + rowsAppended + ' missing rows' : ''}.`;
-  logImportEvent('Shopify', 'Refund refresh success', rowsUpdated + rowsAppended);
+  const msg = `Refreshed refunds for last ${daysBack} days: updated ${rowsUpdated} rows${appendMissing ? ', appended ' + rowsAppended + ' missing rows' : ''} (using financial_status filters)`;
+  logImportEvent('Shopify', 'Refund refresh success (financial_status)', rowsUpdated + rowsAppended);
   SpreadsheetApp.getActiveSpreadsheet().toast(`🔁 ${msg}`, "Shopify Refund Refresh", 8);
   return msg;
 }
@@ -513,4 +520,13 @@ function refreshShopifyAdjustments() {
 
 function refreshShopifyAdjustmentsLast60Days() {
   return refreshShopifyRefundsLastNDays_(60, true);
+}
+
+/**
+ * NEW: Update orders with refunds (simplified workflow).
+ * This replaces the triage system with a direct refund check.
+ * Default: checks last 90 days for refunded orders.
+ */
+function updateShopifyOrdersWithRefunds() {
+  return refreshShopifyRefundsLastNDays_(90, false);
 }

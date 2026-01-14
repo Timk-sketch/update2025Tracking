@@ -2,6 +2,26 @@
 // 10_UI_Menu.gs — Pipeline + Sidebar + Menu + onOpen
 // =====================================================
 
+// NEW: Simplified Update Orders function (replaces triage system)
+function updateAllOrdersWithRefunds() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.toast('Checking for refunds in both platforms...', 'Update Orders', 5);
+
+  // Update both Shopify and Squarespace orders with refunds
+  const shopifyMsg = updateShopifyOrdersWithRefunds();
+  const squarespaceMsg = updateSquarespaceOrdersWithRefunds();
+
+  // Then rebuild clean master and reports
+  deduplicateAllOrders();
+  buildAllOrdersClean();
+  buildOrdersSummaryReport();
+  buildCustomerOutreachList();
+
+  const msg = `Orders updated with refunds:\n${shopifyMsg}\n${squarespaceMsg}\nReports rebuilt successfully.`;
+  ss.toast('✅ ' + msg, 'Update Complete', 10);
+  return msg;
+}
+
 // PIPELINE (sidebar)
 function runFullPipelineFromSidebar() {
   // Only refresh refunds/discounts (much faster than full import)
@@ -58,43 +78,23 @@ function rebuildOrderToolsMenu() {
   ui.createMenu('Order Tools')
     .addItem('Show Sidebar', 'showSidebar')
     .addSeparator()
-    .addSubMenu(ui.createMenu('📥 Triage System')
-      .addItem('🔄 Clean Triage (Update Main Sheets)', 'cleanTriage')
-      .addSeparator()
-      .addItem('⚙️ Setup Automated Triggers', 'setupTriageTriggers')
-      .addItem('📊 View Trigger Status', 'viewTriageTriggerStatus')
-      .addItem('🗑️ Delete All Triggers', 'deleteTriageTriggers'))
+    .addItem('🔄 Update Orders (Check Refunds)', 'updateAllOrdersWithRefunds')
+    .addSeparator()
+    .addItem('📥 Import Shopify Orders (NEW)', 'importShopifyOrders')
+    .addItem('📥 Import Squarespace Orders (NEW)', 'importSquarespaceOrders')
     .addSeparator()
     .addItem('Build Clean Master (All_Orders_Clean)', 'buildAllOrdersClean')
     .addItem('Build Orders Summary Report', 'buildOrdersSummaryReport')
     .addItem('Build Customer Outreach List', 'buildCustomerOutreachList')
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Admin / Advanced')
-      .addItem('Import Shopify Orders (NEW only)', 'importShopifyOrders')
-      .addItem('Import Squarespace Orders (NEW only)', 'importSquarespaceOrders')
-      .addSeparator()
       .addItem('⚠️ Import ALL Shopify History', 'importShopifyOrdersFullHistory')
       .addItem('⚠️ Import ALL Squarespace History', 'importSquarespaceOrdersFullHistory')
       .addSeparator()
-      .addItem('🧪 Test 2-Hour Triage Run', 'testTriageEvery2Hours')
-      .addItem('🧪 Test Daily Triage Run', 'testTriageDaily')
-      .addItem('🧪 Test Weekly Triage Run', 'testTriageWeekly')
-      .addSeparator()
-      .addSubMenu(ui.createMenu('Manual Triage Imports')
-        .addItem('Shopify: 0-30 days', 'importShopifyTriage0to30')
-        .addItem('Shopify: 31-60 days', 'importShopifyTriage31to60')
-        .addItem('Shopify: 61-90 days', 'importShopifyTriage61to90')
-        .addItem('Shopify: 91-120 days', 'importShopifyTriage91to120')
-        .addSeparator()
-        .addItem('Squarespace: 0-30 days', 'importSquarespaceTriage0to30')
-        .addItem('Squarespace: 31-60 days', 'importSquarespaceTriage31to60')
-        .addItem('Squarespace: 61-90 days', 'importSquarespaceTriage61to90')
-        .addItem('Squarespace: 91-120 days', 'importSquarespaceTriage91to120'))
-      .addSeparator()
-      .addItem('Refresh Shopify Adjustments (30 days)', 'refreshShopifyAdjustments')
-      .addItem('Refresh Shopify Adjustments (60 days)', 'refreshShopifyAdjustmentsLast60Days')
-      .addItem('Refresh Squarespace Adjustments (30 days)', 'refreshSquarespaceAdjustments')
-      .addItem('Refresh Squarespace Adjustments (60 days)', 'refreshSquarespaceAdjustmentsLast60Days')
+      .addItem('Refresh Shopify Refunds (30 days)', 'refreshShopifyAdjustments')
+      .addItem('Refresh Shopify Refunds (60 days)', 'refreshShopifyAdjustmentsLast60Days')
+      .addItem('Refresh Squarespace Refunds (30 days)', 'refreshSquarespaceAdjustments')
+      .addItem('Refresh Squarespace Refunds (60 days)', 'refreshSquarespaceAdjustmentsLast60Days')
       .addSeparator()
       .addItem('Deduplicate All Orders', 'deduplicateAllOrders')
       .addSeparator()

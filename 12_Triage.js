@@ -2,6 +2,15 @@
 // 12_Triage.js — Triage system for incremental order updates
 // Handles refunds/discounts that happen after initial import
 // =====================================================
+//
+// DEPRECATED: This triage system has been replaced with a simpler
+// "Update Orders (Check Refunds)" function that uses:
+// - Shopify: financial_status filters (refunded/partially_refunded)
+// - Squarespace: modifiedAfter filter
+//
+// These functions are kept for backward compatibility but are no longer
+// used in the main menu or recommended workflow.
+// =====================================================
 
 /**
  * Import Shopify orders to triage based on date range

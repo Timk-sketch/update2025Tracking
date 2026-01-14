@@ -388,3 +388,12 @@ function refreshSquarespaceAdjustments() {
 function refreshSquarespaceAdjustmentsLast60Days() {
   return refreshSquarespaceRefundsLastNDays_(60, true);
 }
+
+/**
+ * NEW: Update orders with refunds (simplified workflow).
+ * This replaces the triage system with a direct refund check.
+ * Default: checks last 90 days for modified orders.
+ */
+function updateSquarespaceOrdersWithRefunds() {
+  return refreshSquarespaceRefundsLastNDays_(90, false);
+}

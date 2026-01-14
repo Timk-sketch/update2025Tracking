@@ -1,12 +1,22 @@
 // =====================================================
 // 13_TriageTriggers.js — Automated triage trigger setup
 // =====================================================
+//
+// DEPRECATED: The triage system has been replaced with a simpler
+// "Update Orders (Check Refunds)" function that uses financial_status
+// filters for Shopify and modifiedAfter for Squarespace.
+//
+// These functions are kept for backward compatibility but are no longer
+// used in the main menu.
+// =====================================================
 
 /**
- * Setup automated triage triggers
+ * DEPRECATED: Setup automated triage triggers
  * - Every 2 hours: Import 0-30 days + Clean Triage
  * - Daily at midnight: Import 31-60 days + Clean Triage
  * - Weekly on Sunday 6 AM: Import 61-120 days + Clean Triage
+ *
+ * NOTE: This is deprecated. Use updateAllOrdersWithRefunds() instead.
  */
 function setupTriageTriggers() {
   // First, delete any existing triage triggers to avoid duplicates
