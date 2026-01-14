@@ -10,16 +10,24 @@
 function buildDiscountsReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // Get date range from Marketing Controls (same as Summary Report)
-  const startDate = PROPS.getProperty('ORDERS_SUMMARY_START_DATE');
-  const endDate = PROPS.getProperty('ORDERS_SUMMARY_END_DATE');
+  // Get date range from Orders Summary Report sheet (same as Summary Report)
+  const outSheet = ss.getSheetByName('Orders_Summary_Report');
+  if (!outSheet) {
+    throw new Error('Orders_Summary_Report sheet not found. Please set the date range in the sidebar first.');
+  }
 
-  if (!startDate || !endDate) {
+  const startRaw = outSheet.getRange('B2').getValue();
+  const endRaw = outSheet.getRange('D2').getValue();
+
+  const start = asDate_(startRaw);
+  const end = asDate_(endRaw);
+
+  if (!start || !end) {
     throw new Error('Date range not set. Please set the date range in the sidebar first.');
   }
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const startDate = formatDate_(start);
+  const endDate = formatDate_(end);
 
   logProgress('Discounts Report', `Building report for ${startDate} to ${endDate}...`);
 
