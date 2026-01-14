@@ -2,7 +2,76 @@
 // 10_UI_Menu.gs — Pipeline + Sidebar + Menu + onOpen
 // =====================================================
 
-// NEW: Combined Import and Update workflow
+// AUTOMATION PART 1: Import and update orders only (for time-based trigger)
+function automatedImportAndUpdate() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const steps = [];
+
+  logProgress('Automated Import', '🚀 Starting automated import and update...');
+
+  // Step 1: Import new orders (last 14 days)
+  logProgress('Automated Import', '📥 Step 1/6: Importing Shopify orders (last 14 days)...');
+  const shopifyImportMsg = importShopifyOrders();
+  steps.push('✓ Shopify Import: ' + shopifyImportMsg);
+
+  logProgress('Automated Import', '📥 Step 2/6: Importing Squarespace orders (last 14 days)...');
+  const squarespaceImportMsg = importSquarespaceOrders();
+  steps.push('✓ Squarespace Import: ' + squarespaceImportMsg);
+
+  // Step 2: Update existing orders with refunds (last 90 days)
+  logProgress('Automated Import', '🔄 Step 3/6: Checking Shopify refunds (last 90 days)...');
+  const shopifyRefundMsg = updateShopifyOrdersWithRefunds();
+  steps.push('✓ Shopify Refunds: ' + shopifyRefundMsg);
+
+  logProgress('Automated Import', '🔄 Step 4/6: Checking Squarespace refunds (last 90 days)...');
+  const squarespaceRefundMsg = updateSquarespaceOrdersWithRefunds();
+  steps.push('✓ Squarespace Refunds: ' + squarespaceRefundMsg);
+
+  // Step 3: Prepare data
+  logProgress('Automated Import', '🧹 Step 5/6: Deduplicating orders...');
+  deduplicateAllOrders();
+  steps.push('✓ Deduplication complete');
+
+  logProgress('Automated Import', '📊 Step 6/6: Building clean master sheet...');
+  buildAllOrdersClean();
+  steps.push('✓ Clean master built');
+
+  const msg = '✅ Part 1 Complete (Import & Update)!\n\n' + steps.join('\n');
+  logProgress('Automated Import', '✅ All 6 steps complete! Run automatedBuildReports next.');
+  logImportEvent('Automated Import', 'Part 1: Import & Update finished', steps.length);
+  return msg;
+}
+
+// AUTOMATION PART 2: Build all reports (for time-based trigger, runs after Part 1)
+function automatedBuildReports() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const steps = [];
+
+  logProgress('Automated Reports', '📊 Starting automated report building...');
+
+  logProgress('Automated Reports', '📈 Step 1/4: Building summary report...');
+  buildOrdersSummaryReport();
+  steps.push('✓ Summary report built');
+
+  logProgress('Automated Reports', '💰 Step 2/4: Building refunds report...');
+  buildRefundsReport();
+  steps.push('✓ Refunds report built');
+
+  logProgress('Automated Reports', '🏷️ Step 3/4: Building discounts report...');
+  buildDiscountsReport();
+  steps.push('✓ Discounts report built');
+
+  logProgress('Automated Reports', '📧 Step 4/4: Building customer outreach list...');
+  buildCustomerOutreachList();
+  steps.push('✓ Outreach list built');
+
+  const msg = '✅ Part 2 Complete (All Reports)!\n\n' + steps.join('\n');
+  logProgress('Automated Reports', '✅ All 4 reports built!');
+  logImportEvent('Automated Reports', 'Part 2: Report building finished', steps.length);
+  return msg;
+}
+
+// MANUAL: Combined Import and Update workflow (for sidebar button)
 function importAndUpdateAllOrders() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const steps = [];
