@@ -237,18 +237,20 @@ function addShopifyRefundComparison() {
     throw new Error("Missing SHOPIFY_API_KEY or SHOPIFY_SHOP_DOMAIN in Script Properties.");
   }
 
-  // Calculate days back from start date
-  const today = new Date();
-  const daysBack = Math.ceil((today - start) / (1000 * 60 * 60 * 24));
+  // For refund analysis, we need to look at ALL orders that have refunds
+  // Then filter by when the refund was issued (not when order was created)
+  // Going back 180 days to catch refunds issued in our date range for older orders
   const d = new Date();
-  d.setDate(d.getDate() - daysBack);
-  const createdAtMin = d.toISOString();
+  d.setDate(d.getDate() - 180);
+  const updatedAtMin = d.toISOString();
 
   const apiRefunds = [];
   const financialStatuses = ['refunded', 'partially_refunded'];
 
+  logProgress('Refund Comparison', 'Fetching orders with refunds (last 180 days)...');
+
   for (const status of financialStatuses) {
-    let url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?status=any&financial_status=${status}&limit=250&created_at_min=${encodeURIComponent(createdAtMin)}`;
+    let url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?status=any&financial_status=${status}&limit=250&updated_at_min=${encodeURIComponent(updatedAtMin)}`;
 
     while (url) {
       const resp = fetchWithRetry_(url, {
@@ -266,28 +268,39 @@ function addShopifyRefundComparison() {
       if (!orders.length) break;
 
       orders.forEach(order => {
-        const orderDate = asDate_(order.created_at);
-        if (!orderDate || orderDate < start || orderDate > end) return;
+        // Check if this order has refunds issued in our date range
+        if (!order.refunds || !order.refunds.length) return;
 
-        const refundTotal = computeShopifyRefundTotal_(order);
-        if (refundTotal <= 0) return;
+        let refundTotalInRange = 0;
+        const refundDetailsInRange = [];
+
+        order.refunds.forEach(ref => {
+          const refundDate = asDate_(ref.created_at);
+          if (!refundDate || refundDate < start || refundDate > end) return;
+
+          // Calculate refund amount from this specific refund
+          const refAmount = (ref.transactions || [])
+            .filter(t => !t.kind || t.kind === 'refund')
+            .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+
+          if (refAmount > 0) {
+            refundTotalInRange += refAmount;
+            refundDetailsInRange.push(`${ref.created_at}: $${refAmount.toFixed(2)}`);
+          }
+        });
+
+        if (refundTotalInRange <= 0) return;
 
         apiRefunds.push({
           orderId: order.id || '',
           orderNumber: order.order_number || '',
-          orderDate: orderDate,
+          orderDate: asDate_(order.created_at),
           email: order.email || '',
           customerName: `${order.customer?.first_name || ''} ${order.customer?.last_name || ''}`.trim(),
           totalPrice: parseFloat(order.total_price) || 0,
-          refundTotal: refundTotal,
+          refundTotal: refundTotalInRange,
           financialStatus: order.financial_status || '',
-          refundDetails: (order.refunds || []).map(ref => {
-            const refDate = ref.created_at || '';
-            const refAmount = (ref.transactions || [])
-              .filter(t => !t.kind || t.kind === 'refund')
-              .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
-            return `${refDate}: $${refAmount.toFixed(2)}`;
-          }).join(' | ')
+          refundDetails: refundDetailsInRange.join(' | ')
         });
       });
 
