@@ -84,6 +84,8 @@ function buildRefundsReport() {
 
     const shopifyOrdersWithRefunds = new Map(); // orderId -> order data
     const financialStatuses = ['refunded', 'partially_refunded'];
+    let totalOrdersFetched = 0;
+    let totalOrdersWithRefundArray = 0;
 
     for (const status of financialStatuses) {
       let url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?status=any&financial_status=${status}&limit=250&updated_at_min=${encodeURIComponent(updatedAtMin)}`;
@@ -103,7 +105,15 @@ function buildRefundsReport() {
         const orders = json.orders || [];
         if (!orders.length) break;
 
+        totalOrdersFetched += orders.length;
+        logProgress('Refunds Report', `Fetched ${orders.length} orders with status=${status} (total: ${totalOrdersFetched})`);
+
         orders.forEach(order => {
+          // Debug: Check if refunds array exists
+          if (order.refunds && order.refunds.length > 0) {
+            totalOrdersWithRefundArray++;
+          }
+
           // Check if this order has refunds issued in our date range
           if (!order.refunds || !order.refunds.length) return;
 
@@ -129,7 +139,7 @@ function buildRefundsReport() {
       }
     }
 
-    logProgress('Refunds Report', `Found ${shopifyOrdersWithRefunds.size} Shopify orders with refunds in date range`);
+    logProgress('Refunds Report', `API returned ${totalOrdersFetched} orders, ${totalOrdersWithRefundArray} have refunds array, ${shopifyOrdersWithRefunds.size} have refunds in date range (${startDate} to ${endDate})`);
 
     // ==========================================
     // PART 2: Get line item details from All_Order_Clean for Shopify orders
