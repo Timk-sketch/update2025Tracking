@@ -76,6 +76,8 @@ function buildRefundsReport() {
   const shopDomain = PROPS.getProperty('SHOPIFY_SHOP_DOMAIN');
   const apiVersion = '2023-10';
 
+  logProgress('Refunds Report', `API Config: shopDomain=${shopDomain ? 'SET' : 'NOT SET'}, apiKey=${apiKey ? 'SET (length=' + apiKey.length + ')' : 'NOT SET'}`);
+
   if (apiKey && shopDomain) {
     // Query orders updated in last 180 days, then filter refunds by issue date
     const d = new Date();
