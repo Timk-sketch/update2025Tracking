@@ -392,6 +392,9 @@ function addShopifyRefundComparison() {
   // Sort by difference (largest first)
   comparisonRows.sort((a, b) => Math.abs(b[7]) - Math.abs(a[7]));
 
+  // Currency format (needed for summary section too)
+  const currencyFormat = '"$"#,##0.00';
+
   // Write to sheet
   compSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   compSheet.getRange(1, 1, 1, headers.length)
@@ -404,7 +407,6 @@ function addShopifyRefundComparison() {
 
     // Format columns
     compSheet.getRange(2, 3, comparisonRows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss'); // Date
-    const currencyFormat = '"$"#,##0.00';
     compSheet.getRange(2, 6, comparisonRows.length, 3).setNumberFormat(currencyFormat); // Refund columns
 
     // Color code status column
