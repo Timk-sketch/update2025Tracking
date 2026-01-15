@@ -185,6 +185,42 @@ function runFullPipelineFromSidebar() {
   return 'Full Pipeline Complete!\n' + importUpdateMsg;
 }
 
+// NEW: Clean Orders workflow (runs separately to avoid timeout)
+// This builds All_Order_Clean from raw sheets, then applies deduplication and filtering
+function cleanOrders() {
+  const startTime = new Date();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const steps = [];
+
+  logProgress('Clean Orders', '🚀 Starting clean orders workflow...');
+  logUserAction('Clean Orders', 'Started clean workflow');
+
+  // Step 1: Deduplicate raw sheets
+  logProgress('Clean Orders', '🧹 Step 1/3: Deduplicating orders...');
+  deduplicateAllOrders();
+  steps.push('✓ Deduplication complete');
+
+  // Step 2: Build clean master (applies banned product and banned email filters)
+  logProgress('Clean Orders', '📊 Step 2/3: Building clean master sheet...');
+  buildAllOrdersClean();
+  steps.push('✓ Clean master built');
+
+  // Step 3: Post-build cleaning (removes any banned emails/products that might have been missed)
+  logProgress('Clean Orders', '🧹 Step 3/3: Running post-build cleaning...');
+  const cleanMsg = cleanBannedEmailsFromAllOrdersClean();
+  steps.push('✓ ' + cleanMsg);
+
+  const msg = '✅ Clean Orders Complete!\n\n' + steps.join('\n');
+  logProgress('Clean Orders', '✅ All 3 steps complete!');
+  logImportEvent('Clean Orders', 'Clean workflow finished', steps.length);
+
+  // Log completion with duration
+  const duration = (new Date() - startTime) / 1000;
+  logUserAction('Clean Orders', `Completed: ${steps.length} steps`, 'Success', duration);
+
+  return msg;
+}
+
 // LEGACY: Pipeline with full imports (now just calls the combined function)
 function runFullPipelineWithImports() {
   return importAndUpdateAllOrders();
@@ -236,7 +272,7 @@ function rebuildOrderToolsMenu() {
       .addItem('Build Clean Master Only', 'buildAllOrdersClean')
       .addSeparator()
       .addItem('🚫 Setup Banned_Emails Tab', 'setupBannedEmailsTab')
-      .addItem('🧹 Clean Banned Emails from All_Order_Clean', 'cleanBannedEmailsFromAllOrdersClean')
+      .addItem('🧹 Clean Banned Emails & Products', 'cleanBannedEmailsFromAllOrdersClean')
       .addItem('📥 Import from External Banned List', 'importBannedListFromExternal')
       .addSeparator()
       .addItem('📊 Setup Usage Tracking', 'setupUsageLogSheet')

@@ -173,8 +173,9 @@ function addToBannedList(emailOrDomain) {
 }
 
 /**
- * Removes all orders with banned emails from All_Order_Clean.
+ * Removes all orders with banned emails AND banned products from All_Order_Clean.
  * This is faster than rebuilding the entire clean master.
+ * Applies both email and product filters for truly clean data.
  */
 function cleanBannedEmailsFromAllOrdersClean() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -196,30 +197,47 @@ function cleanBannedEmailsFromAllOrdersClean() {
   const data = cleanSheet.getDataRange().getValues();
   const headers = data[0];
 
-  // Find email column
+  // Find required columns
   const emailCol = headers.indexOf('customer_email_raw');
+  const productCol = headers.indexOf('product_name');
+
   if (emailCol === -1) {
     throw new Error('customer_email_raw column not found in All_Order_Clean');
   }
+  if (productCol === -1) {
+    throw new Error('product_name column not found in All_Order_Clean');
+  }
 
-  // Filter out banned emails
+  // Filter out banned emails AND banned products
   const headerRow = [headers];
   const cleanRows = [];
-  let removedCount = 0;
+  let removedByEmail = 0;
+  let removedByProduct = 0;
 
   for (let i = 1; i < data.length; i++) {
     const emailRaw = data[i][emailCol];
+    const productName = data[i][productCol];
 
+    // Check banned email
     if (isBannedEmail_(emailRaw, banned)) {
-      removedCount++;
+      removedByEmail++;
       continue;
     }
 
+    // Check banned product
+    if (isBannedProduct_(productName)) {
+      removedByProduct++;
+      continue;
+    }
+
+    // Keep this row
     cleanRows.push(data[i]);
   }
 
+  const totalRemoved = removedByEmail + removedByProduct;
+
   // Only rewrite if we removed something
-  if (removedCount > 0) {
+  if (totalRemoved > 0) {
     cleanSheet.clearContents();
     const allRows = headerRow.concat(cleanRows);
     cleanSheet.getRange(1, 1, allRows.length, headers.length).setValues(allRows);
@@ -228,13 +246,17 @@ function cleanBannedEmailsFromAllOrdersClean() {
     cleanSheet.setFrozenRows(1);
     cleanSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
 
-    const msg = `✅ Removed ${removedCount} orders with banned emails from All_Order_Clean.`;
-    ss.toast(msg, 'Clean Banned Emails', 6);
-    logImportEvent('Clean Banned Emails', msg, removedCount);
+    const details = [];
+    if (removedByEmail > 0) details.push(`${removedByEmail} by banned emails`);
+    if (removedByProduct > 0) details.push(`${removedByProduct} by banned products`);
+
+    const msg = `✅ Removed ${totalRemoved} orders from All_Order_Clean (${details.join(', ')}).`;
+    ss.toast(msg, 'Clean All_Order_Clean', 8);
+    logImportEvent('Clean All_Order_Clean', msg, totalRemoved);
     return msg;
   }
 
-  return 'No orders with banned emails found in All_Order_Clean.';
+  return 'No banned orders found in All_Order_Clean.';
 }
 
 /**
