@@ -1,11 +1,12 @@
 // =====================================================
 // 14_RefundsReport.js — Refunds Report
 // Pulls all orders with refunds for the selected date range
+// Uses All_Order_Clean sheet for accurate data
 // =====================================================
 
 /**
  * Builds a Refunds report for the current date range.
- * Pulls from both Shopify and Squarespace orders with refunds.
+ * Pulls from All_Order_Clean with refunds.
  */
 function buildRefundsReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -48,148 +49,89 @@ function buildRefundsReport() {
     'Customer Email',
     'Customer Name',
     'Product Name',
+    'SKU',
     'Quantity',
-    'Original Price',
-    'Refund Amount',
-    'Discount Amount',
-    'Net After Refund',
-    'Order Status',
-    'Refund Date/Modified'
+    'Unit Price',
+    'Line Revenue',
+    'Order Discount Total',
+    'Order Refund Total',
+    'Order Net Revenue',
+    'Currency',
+    'Financial Status',
+    'Fulfillment Status'
   ];
 
-  // Collect all refunded orders
+  // Collect all refunded orders from All_Order_Clean
   const refundedOrders = [];
 
-  // Process Shopify orders
-  const shopifySheet = ss.getSheetByName('Shopify Orders');
-  if (shopifySheet) {
-    const shopifyData = shopifySheet.getDataRange().getValues();
-    if (shopifyData.length > 1) {
-      const shopifyHeaders = shopifyData[0].map(h => String(h || '').trim());
-
-      // Find columns
-      const sOrderIdCol = shopifyHeaders.indexOf('Order ID');
-      const sOrderNumCol = shopifyHeaders.indexOf('Order Number');
-      const sCreatedCol = shopifyHeaders.indexOf('Created At');
-      const sEmailCol = shopifyHeaders.indexOf('Customer Email');
-      const sFirstNameCol = shopifyHeaders.indexOf('Customer First Name');
-      const sLastNameCol = shopifyHeaders.indexOf('Customer Last Name');
-      const sLineItemNameCol = shopifyHeaders.indexOf('Lineitem Name');
-      const sLineItemQtyCol = shopifyHeaders.indexOf('Lineitem Quantity');
-      const sLineItemPriceCol = shopifyHeaders.indexOf('Lineitem Price');
-      const sRefundsCol = shopifyHeaders.indexOf('Total Refunds');
-      const sDiscountsCol = shopifyHeaders.indexOf('Current Total Discounts');
-      const sFinancialStatusCol = shopifyHeaders.indexOf('Financial Status');
-      const sUpdatedCol = shopifyHeaders.indexOf('Updated At');
-
-      // Process each row
-      for (let r = 1; r < shopifyData.length; r++) {
-        const row = shopifyData[r];
-
-        // Get order date
-        const orderDate = asDate_(row[sCreatedCol]);
-        if (!orderDate || orderDate < start || orderDate > end) continue;
-
-        // Check if there's a refund
-        const refundAmount = parseFloat(row[sRefundsCol]) || 0;
-        if (refundAmount <= 0) continue;
-
-        // Extract data
-        const lineItemPrice = parseFloat(row[sLineItemPriceCol]) || 0;
-        const quantity = parseFloat(row[sLineItemQtyCol]) || 1;
-        const originalPrice = lineItemPrice * quantity;
-        const discountAmount = parseFloat(row[sDiscountsCol]) || 0;
-        const netAfterRefund = originalPrice - refundAmount - discountAmount;
-
-        const customerName = [
-          row[sFirstNameCol] || '',
-          row[sLastNameCol] || ''
-        ].filter(Boolean).join(' ') || 'N/A';
-
-        refundedOrders.push([
-          'Shopify',
-          row[sOrderIdCol] || '',
-          row[sOrderNumCol] || '',
-          orderDate,
-          row[sEmailCol] || '',
-          customerName,
-          row[sLineItemNameCol] || '',
-          quantity,
-          originalPrice,
-          refundAmount,
-          discountAmount,
-          netAfterRefund,
-          row[sFinancialStatusCol] || '',
-          row[sUpdatedCol] || ''
-        ]);
-      }
-    }
+  // Get All_Order_Clean sheet
+  const cleanSheet = ss.getSheetByName(CLEAN_OUTPUT_SHEET || 'All_Order_Clean');
+  if (!cleanSheet) {
+    throw new Error('All_Order_Clean sheet not found. Please build the clean master first.');
   }
 
-  // Process Squarespace orders
-  const squarespaceSheet = ss.getSheetByName('Squarespace Orders');
-  if (squarespaceSheet) {
-    const squarespaceData = squarespaceSheet.getDataRange().getValues();
-    if (squarespaceData.length > 1) {
-      const squarespaceHeaders = squarespaceData[0].map(h => String(h || '').trim());
+  const cleanData = cleanSheet.getDataRange().getValues();
+  if (cleanData.length <= 1) {
+    // No data, just headers
+    refundsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    refundsSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#4285f4').setFontColor('#ffffff');
+    refundsSheet.getRange(2, 1).setValue('No orders found in All_Order_Clean.');
+    return 'No orders found in All_Order_Clean.';
+  }
 
-      // Find columns
-      const sqOrderIdCol = squarespaceHeaders.indexOf('Order ID');
-      const sqOrderNumCol = squarespaceHeaders.indexOf('Order Number');
-      const sqCreatedCol = squarespaceHeaders.indexOf('Created On');
-      const sqEmailCol = squarespaceHeaders.indexOf('Customer Email');
-      const sqBillFirstCol = squarespaceHeaders.indexOf('Billing First Name');
-      const sqBillLastCol = squarespaceHeaders.indexOf('Billing Last Name');
-      const sqLineItemNameCol = squarespaceHeaders.indexOf('LineItem Product Name');
-      const sqLineItemQtyCol = squarespaceHeaders.indexOf('LineItem Quantity');
-      const sqLineItemPriceCol = squarespaceHeaders.indexOf('LineItem Unit Price Value');
-      const sqRefundValueCol = squarespaceHeaders.indexOf('Refunded Total Value');
-      const sqDiscountValueCol = squarespaceHeaders.indexOf('Discount Total Value');
-      const sqFulfillmentCol = squarespaceHeaders.indexOf('Fulfillment Status');
-      const sqModifiedCol = squarespaceHeaders.indexOf('Modified On');
+  const cleanHeaders = cleanData[0].map(h => String(h || '').trim());
 
-      // Process each row
-      for (let r = 1; r < squarespaceData.length; r++) {
-        const row = squarespaceData[r];
+  // Find column indices
+  const colPlatform = cleanHeaders.indexOf('platform');
+  const colOrderId = cleanHeaders.indexOf('order_id');
+  const colOrderNumber = cleanHeaders.indexOf('order_number');
+  const colOrderDate = cleanHeaders.indexOf('order_date');
+  const colEmailRaw = cleanHeaders.indexOf('customer_email_raw');
+  const colCustomerName = cleanHeaders.indexOf('customer_name');
+  const colProductName = cleanHeaders.indexOf('product_name');
+  const colSku = cleanHeaders.indexOf('sku');
+  const colQuantity = cleanHeaders.indexOf('quantity');
+  const colUnitPrice = cleanHeaders.indexOf('unit_price');
+  const colLineRevenue = cleanHeaders.indexOf('line_revenue');
+  const colOrderDiscountTotal = cleanHeaders.indexOf('order_discount_total');
+  const colOrderRefundTotal = cleanHeaders.indexOf('order_refund_total');
+  const colOrderNetRevenue = cleanHeaders.indexOf('order_net_revenue');
+  const colCurrency = cleanHeaders.indexOf('currency');
+  const colFinancialStatus = cleanHeaders.indexOf('financial_status');
+  const colFulfillmentStatus = cleanHeaders.indexOf('fulfillment_status');
 
-        // Get order date
-        const orderDate = asDate_(row[sqCreatedCol]);
-        if (!orderDate || orderDate < start || orderDate > end) continue;
+  // Process each row
+  for (let r = 1; r < cleanData.length; r++) {
+    const row = cleanData[r];
 
-        // Check if there's a refund
-        const refundAmount = parseFloat(row[sqRefundValueCol]) || 0;
-        if (refundAmount <= 0) continue;
+    // Get order date
+    const orderDate = asDate_(row[colOrderDate]);
+    if (!orderDate || orderDate < start || orderDate > end) continue;
 
-        // Extract data
-        const lineItemPrice = parseFloat(row[sqLineItemPriceCol]) || 0;
-        const quantity = parseFloat(row[sqLineItemQtyCol]) || 1;
-        const originalPrice = lineItemPrice * quantity;
-        const discountAmount = parseFloat(row[sqDiscountValueCol]) || 0;
-        const netAfterRefund = originalPrice - refundAmount - discountAmount;
+    // Check if there's a refund
+    const refundTotal = parseFloat(row[colOrderRefundTotal]) || 0;
+    if (refundTotal <= 0) continue;
 
-        const customerName = [
-          row[sqBillFirstCol] || '',
-          row[sqBillLastCol] || ''
-        ].filter(Boolean).join(' ') || 'N/A';
-
-        refundedOrders.push([
-          'Squarespace',
-          row[sqOrderIdCol] || '',
-          row[sqOrderNumCol] || '',
-          orderDate,
-          row[sqEmailCol] || '',
-          customerName,
-          row[sqLineItemNameCol] || '',
-          quantity,
-          originalPrice,
-          refundAmount,
-          discountAmount,
-          netAfterRefund,
-          row[sqFulfillmentCol] || '',
-          row[sqModifiedCol] || ''
-        ]);
-      }
-    }
+    // Extract data
+    refundedOrders.push([
+      row[colPlatform] || '',
+      row[colOrderId] || '',
+      row[colOrderNumber] || '',
+      orderDate,
+      row[colEmailRaw] || '',
+      row[colCustomerName] || '',
+      row[colProductName] || '',
+      row[colSku] || '',
+      parseFloat(row[colQuantity]) || 0,
+      parseFloat(row[colUnitPrice]) || 0,
+      parseFloat(row[colLineRevenue]) || 0,
+      parseFloat(row[colOrderDiscountTotal]) || 0,
+      refundTotal,
+      parseFloat(row[colOrderNetRevenue]) || 0,
+      row[colCurrency] || '',
+      row[colFinancialStatus] || '',
+      row[colFulfillmentStatus] || ''
+    ]);
   }
 
   // Write to sheet
@@ -205,13 +147,15 @@ function buildRefundsReport() {
     refundsSheet.getRange(2, 1, refundedOrders.length, headers.length).setValues(refundedOrders);
 
     // Format columns
-    // Date columns (D and N)
+    // Date column (D)
     refundsSheet.getRange(2, 4, refundedOrders.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
-    refundsSheet.getRange(2, 14, refundedOrders.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
 
-    // Currency columns (I, J, K, L)
+    // Number columns (I - Quantity)
+    refundsSheet.getRange(2, 9, refundedOrders.length, 1).setNumberFormat('#,##0');
+
+    // Currency columns (J, K, L, M, N - Unit Price, Line Revenue, Discount, Refund, Net Revenue)
     const currencyFormat = '"$"#,##0.00';
-    refundsSheet.getRange(2, 9, refundedOrders.length, 4).setNumberFormat(currencyFormat);
+    refundsSheet.getRange(2, 10, refundedOrders.length, 5).setNumberFormat(currencyFormat);
 
     // Freeze header row
     refundsSheet.setFrozenRows(1);
@@ -224,13 +168,16 @@ function buildRefundsReport() {
     // Add summary at the bottom
     const summaryRow = refundedOrders.length + 3;
     refundsSheet.getRange(summaryRow, 1, 1, 2).merge().setValue('TOTAL REFUNDS:').setFontWeight('bold').setBackground('#f1f3f4');
-    refundsSheet.getRange(summaryRow, 3).setFormula(`=SUM(J2:J${refundedOrders.length + 1})`).setNumberFormat(currencyFormat).setFontWeight('bold').setBackground('#f1f3f4');
+    refundsSheet.getRange(summaryRow, 3).setFormula(`=SUM(M2:M${refundedOrders.length + 1})`).setNumberFormat(currencyFormat).setFontWeight('bold').setBackground('#f1f3f4');
 
-    refundsSheet.getRange(summaryRow + 1, 1, 1, 2).merge().setValue('TOTAL NET AFTER REFUND:').setFontWeight('bold').setBackground('#f1f3f4');
-    refundsSheet.getRange(summaryRow + 1, 3).setFormula(`=SUM(L2:L${refundedOrders.length + 1})`).setNumberFormat(currencyFormat).setFontWeight('bold').setBackground('#f1f3f4');
+    refundsSheet.getRange(summaryRow + 1, 1, 1, 2).merge().setValue('TOTAL NET REVENUE (AFTER REFUNDS):').setFontWeight('bold').setBackground('#f1f3f4');
+    refundsSheet.getRange(summaryRow + 1, 3).setFormula(`=SUM(N2:N${refundedOrders.length + 1})`).setNumberFormat(currencyFormat).setFontWeight('bold').setBackground('#f1f3f4');
 
-    refundsSheet.getRange(summaryRow + 2, 1, 1, 2).merge().setValue('NUMBER OF ORDERS:').setFontWeight('bold').setBackground('#f1f3f4');
-    refundsSheet.getRange(summaryRow + 2, 3).setValue(refundedOrders.length).setFontWeight('bold').setBackground('#f1f3f4');
+    refundsSheet.getRange(summaryRow + 2, 1, 1, 2).merge().setValue('TOTAL LINE REVENUE (BEFORE REFUNDS):').setFontWeight('bold').setBackground('#f1f3f4');
+    refundsSheet.getRange(summaryRow + 2, 3).setFormula(`=SUM(K2:K${refundedOrders.length + 1})`).setNumberFormat(currencyFormat).setFontWeight('bold').setBackground('#f1f3f4');
+
+    refundsSheet.getRange(summaryRow + 3, 1, 1, 2).merge().setValue('NUMBER OF LINE ITEMS:').setFontWeight('bold').setBackground('#f1f3f4');
+    refundsSheet.getRange(summaryRow + 3, 3).setValue(refundedOrders.length).setFontWeight('bold').setBackground('#f1f3f4');
   } else {
     // No refunds found
     refundsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -238,7 +185,7 @@ function buildRefundsReport() {
     refundsSheet.getRange(2, 1).setValue('No refunds found for the selected date range.');
   }
 
-  const msg = `Refunds Report built: ${refundedOrders.length} refunded orders found (${startDate} to ${endDate})`;
+  const msg = `Refunds Report built: ${refundedOrders.length} refunded line items found (${startDate} to ${endDate})`;
   logProgress('Refunds Report', msg);
   logImportEvent('Refunds Report', msg, refundedOrders.length);
   return msg;
