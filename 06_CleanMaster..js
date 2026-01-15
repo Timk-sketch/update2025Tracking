@@ -18,6 +18,64 @@
  */
 
 // ---------------------------
+// BANNED PRODUCT KEYWORDS
+// Orders containing these product names will be excluded
+// ---------------------------
+const BANNED_PRODUCT_KEYWORDS = [
+  "Roxo",
+  "Rough Country",
+  "Rigid",
+  "Rugged Ridge",
+  "ScanGauge",
+  "Shorty Stunt",
+  "Smittybilt",
+  "Spoke",
+  "Squadron",
+  "Honda Talon",
+  "Stainless Steel",
+  "Standard Side",
+  "Stealth",
+  "Sticker Bomb",
+  "SUZUKI DRZ400SM",
+  "Subaru Crosstrek",
+  "Tactical",
+  "Speedometer",
+  "Trail Tech",
+  "Trailmax",
+  "Skid Plate",
+  "Tusk",
+  "Universal",
+  "Signal",
+  "UTV Conversion",
+  "UTV Plug",
+  "Legal Conversion",
+  "Vehicle Sales Tax",
+  "Vintage Air",
+  "Winch",
+  "Wheelie",
+  "Windshield",
+  "WR250 R/X",
+  "OEM",
+  "ZETA"
+];
+
+/**
+ * Checks if a product name contains any banned keywords.
+ * Case-insensitive partial matching.
+ */
+function isBannedProduct_(productName) {
+  if (!productName) return false;
+  const productLower = String(productName).toLowerCase();
+
+  for (const keyword of BANNED_PRODUCT_KEYWORDS) {
+    if (productLower.includes(keyword.toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---------------------------
 // PUBLIC: reset clean build state + clear output (optional)
 // ---------------------------
 function resetCleanMasterBuildState() {
@@ -273,6 +331,12 @@ function buildAllOrdersClean() {
 
           const productName = s_(row[c.lineName]);
           if (!productName) continue;
+
+          // Exclude banned products
+          if (isBannedProduct_(productName)) {
+            state.excluded++;
+            continue;
+          }
 
           const sku = c.lineSku >= 0 ? s_(row[c.lineSku]) : "";
           const qty = parseQty_(row[c.lineQty]);
@@ -536,6 +600,12 @@ function buildAllOrdersClean() {
 
           const productName = s_(row[c.product]);
           if (!productName) continue;
+
+          // Exclude banned products
+          if (isBannedProduct_(productName)) {
+            state.excluded++;
+            continue;
+          }
 
           // ✅ NEW: Exclude duplicate Squarespace renewal orders in 2026
           if (shouldExcludeSquarespaceOrder_(orderDate, productName)) {
