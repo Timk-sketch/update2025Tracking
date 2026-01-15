@@ -135,41 +135,49 @@ function importAndUpdateAllOrders() {
 }
 
 // NEW: Update-only function (for when you just want to check refunds without importing)
+// Checks API endpoints for refunds, updates raw sheets, then updates All_Order_Clean
+// Use case: Team member wants to verify a refund was processed
 function updateAllOrdersWithRefunds() {
+  const startTime = new Date();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const steps = [];
 
-  logProgress('Update Orders', '🚀 Starting refund check workflow...');
+  logProgress('Check Refunds', '🚀 Checking for new refunds...');
+  logUserAction('Check Refunds Only', 'Started refund check');
 
-  // Update both Shopify and Squarespace orders with refunds
-  logProgress('Update Orders', '🔄 Step 1/6: Checking Shopify refunds (last 90 days)...');
+  // Step 1: Check Shopify API for refunds
+  logProgress('Check Refunds', '🔄 Step 1/5: Checking Shopify refunds (last 90 days)...');
   const shopifyMsg = updateShopifyOrdersWithRefunds();
   steps.push('✓ Shopify: ' + shopifyMsg);
 
-  logProgress('Update Orders', '🔄 Step 2/6: Checking Squarespace refunds (last 90 days)...');
+  // Step 2: Check Squarespace API for refunds
+  logProgress('Check Refunds', '🔄 Step 2/5: Checking Squarespace refunds (last 90 days)...');
   const squarespaceMsg = updateSquarespaceOrdersWithRefunds();
   steps.push('✓ Squarespace: ' + squarespaceMsg);
 
-  // Then rebuild clean master and reports
-  logProgress('Update Orders', '🧹 Step 3/6: Deduplicating orders...');
+  // Step 3: Deduplicate raw sheets
+  logProgress('Check Refunds', '🧹 Step 3/5: Deduplicating orders...');
   deduplicateAllOrders();
   steps.push('✓ Deduplication complete');
 
-  logProgress('Update Orders', '📊 Step 4/6: Building clean master sheet...');
+  // Step 4: Rebuild All_Order_Clean to reflect refund changes
+  logProgress('Check Refunds', '📊 Step 4/5: Updating All_Order_Clean...');
   buildAllOrdersClean();
-  steps.push('✓ Clean master built');
+  steps.push('✓ All_Order_Clean updated');
 
-  logProgress('Update Orders', '📈 Step 5/6: Building summary report...');
-  buildOrdersSummaryReport();
-  steps.push('✓ Summary report built');
+  // Step 5: Post-build cleaning
+  logProgress('Check Refunds', '🧹 Step 5/5: Filtering banned emails/products...');
+  const cleanMsg = cleanBannedEmailsFromAllOrdersClean();
+  steps.push('✓ ' + cleanMsg);
 
-  logProgress('Update Orders', '📧 Step 6/6: Building customer outreach list...');
-  buildCustomerOutreachList();
-  steps.push('✓ Outreach list built');
+  const msg = '✅ Refund Check Complete!\n\n' + steps.join('\n') + '\n\nAll_Order_Clean is now up to date. Reports will reflect latest refund data.';
+  logProgress('Check Refunds', '✅ All 5 steps complete!');
+  logImportEvent('Check Refunds', 'Refund check and clean update complete', steps.length);
 
-  const msg = '✅ Refund Check Complete!\n\n' + steps.join('\n');
-  logProgress('Update Orders', '✅ All 6 steps complete!');
-  logImportEvent('Update Orders', 'Refund check complete', steps.length);
+  // Log completion with duration
+  const duration = (new Date() - startTime) / 1000;
+  logUserAction('Check Refunds Only', `Completed: ${steps.length} steps`, 'Success', duration);
+
   return msg;
 }
 
