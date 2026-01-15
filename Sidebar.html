@@ -189,6 +189,25 @@
 
     <hr>
 
+    <hr>
+
+    <div class="section-title">Ban Email/Domain</div>
+
+    <div class="row">
+      <label>Enter email or domain to exclude</label>
+      <input type="text" id="banEmail" placeholder="user@example.com or example.com">
+      <div class="help-text">Email/domain will be excluded from All_Order_Clean</div>
+    </div>
+
+    <div class="row">
+      <button class="btn-warning" id="btnBanEmail" onclick="runBanEmail()">
+        🚫 Add to Banned List
+      </button>
+      <div class="help-text">After banning, rebuild All_Order_Clean to apply changes</div>
+    </div>
+
+    <hr>
+
     <div class="section-title">Quick Actions</div>
 
     <div class="row">
@@ -211,7 +230,7 @@
       function disableAll_(disabled) {
         const ids = [
           'btnSetRange','btnSaveMarketing','btnSaveOutreach',
-          'btnImportUpdate','btnUpdateOnly','btnClean','btnSummary','btnRefunds','btnDiscounts','btnOutreach','btnFull'
+          'btnImportUpdate','btnUpdateOnly','btnClean','btnSummary','btnRefunds','btnDiscounts','btnOutreach','btnFull','btnBanEmail'
         ];
         ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
       }
@@ -360,6 +379,30 @@
           })
           .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
           .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
+      }
+
+      function runBanEmail() {
+        const emailOrDomain = document.getElementById('banEmail').value.trim();
+
+        if (!emailOrDomain) {
+          log('✗ ERROR: Please enter an email address or domain to ban.');
+          return;
+        }
+
+        log(`Adding "${emailOrDomain}" to banned list...`);
+        disableAll_(true);
+
+        google.script.run
+          .withSuccessHandler(res => {
+            log(`✓ ${res}`);
+            document.getElementById('banEmail').value = ''; // Clear input
+            disableAll_(false);
+          })
+          .withFailureHandler(err => {
+            log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`);
+            disableAll_(false);
+          })
+          .addToBannedList(emailOrDomain);
       }
 
       function loadOutreachControls() {

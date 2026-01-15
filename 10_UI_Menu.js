@@ -225,6 +225,8 @@ function rebuildOrderToolsMenu() {
       .addItem('Deduplicate All Orders', 'deduplicateAllOrders')
       .addItem('Build Clean Master Only', 'buildAllOrdersClean')
       .addSeparator()
+      .addItem('🚫 Setup Banned Email List', 'setupBannedListSpreadsheet')
+      .addSeparator()
       .addItem('🔍 Check Data Coverage', 'diagnosticCheckDataCoverage')
       .addItem('🔍 Check Excluded Orders', 'diagnosticCheckExcludedOrders'))
     .addToUi();
