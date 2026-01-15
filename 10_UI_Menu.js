@@ -287,7 +287,9 @@ function rebuildOrderToolsMenu() {
       .addItem('🗑️ Clear Old Usage Logs (90 days)', 'clearOldUsageLogs90Days')
       .addSeparator()
       .addItem('🔍 Check Data Coverage', 'diagnosticCheckDataCoverage')
-      .addItem('🔍 Check Excluded Orders', 'diagnosticCheckExcludedOrders'))
+      .addItem('🔍 Check Excluded Orders', 'diagnosticCheckExcludedOrders')
+      .addSeparator()
+      .addItem('🔍 Compare Shopify API Refunds', 'addShopifyRefundComparison'))
     .addToUi();
 }
 
