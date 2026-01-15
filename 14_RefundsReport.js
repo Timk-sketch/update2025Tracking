@@ -314,8 +314,14 @@ function addShopifyRefundComparison() {
   }
 
   // Get your system's refund data from All_Order_Clean
+  // NOTE: We DON'T filter by order date here because:
+  // - System doesn't track WHEN refund was issued, only total refund amount
+  // - An order from Dec 2024 might have refund issued in Jan 2026
+  // - We need ALL orders with refunds to properly compare
   const cleanSheet = ss.getSheetByName(CLEAN_OUTPUT_SHEET || 'All_Order_Clean');
   const systemRefunds = new Map(); // orderId -> {refund, orderNumber, email, etc}
+
+  logProgress('Refund Comparison', 'Loading refunds from All_Order_Clean...');
 
   if (cleanSheet && cleanSheet.getLastRow() > 1) {
     const cleanData = cleanSheet.getDataRange().getValues();
@@ -334,16 +340,15 @@ function addShopifyRefundComparison() {
       const platform = row[colPlatform];
       if (platform !== 'Shopify') continue;
 
-      const orderDate = asDate_(row[colOrderDate]);
-      if (!orderDate || orderDate < start || orderDate > end) continue;
-
+      // NO date filtering - include ALL orders with refunds
+      // This is necessary because we don't track when each refund was issued
       const orderId = String(row[colOrderId] || '');
       const refund = parseFloat(row[colOrderRefund]) || 0;
 
       if (refund > 0 && orderId && !systemRefunds.has(orderId)) {
         systemRefunds.set(orderId, {
           orderNumber: row[colOrderNumber] || '',
-          orderDate: orderDate,
+          orderDate: asDate_(row[colOrderDate]),
           email: row[colEmail] || '',
           customerName: row[colCustomerName] || '',
           refund: refund
