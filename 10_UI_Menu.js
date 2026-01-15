@@ -73,10 +73,12 @@ function automatedBuildReports() {
 
 // MANUAL: Combined Import and Update workflow (for sidebar button)
 function importAndUpdateAllOrders() {
+  const startTime = new Date();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const steps = [];
 
   logProgress('Import & Update', '🚀 Starting full import and update workflow...');
+  logUserAction('Import & Update All Orders', 'Started full workflow');
 
   // Step 1: Import new orders (last 14 days)
   logProgress('Import & Update', '📥 Step 1/8: Importing Shopify orders (last 14 days)...');
@@ -124,6 +126,11 @@ function importAndUpdateAllOrders() {
   const msg = '✅ Import & Update Complete!\n\n' + steps.join('\n');
   logProgress('Import & Update', '✅ All 10 steps complete!');
   logImportEvent('Import & Update', 'Complete workflow finished', steps.length);
+
+  // Log completion with duration
+  const duration = (new Date() - startTime) / 1000;
+  logUserAction('Import & Update All Orders', `Completed: ${steps.length} steps`, 'Success', duration);
+
   return msg;
 }
 
@@ -198,6 +205,9 @@ function runFullPipelineTightLast60Days() {
 function showSidebar() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   try {
+    // Log sidebar opening
+    logUserAction('Opened Sidebar', 'User opened the Order Tools sidebar');
+
     const html = HtmlService.createHtmlOutputFromFile('Sidebar')
       .setTitle('Order Tools Sidebar')
       .setWidth(380);
@@ -228,9 +238,16 @@ function rebuildOrderToolsMenu() {
       .addItem('🚫 Setup Banned_Emails Tab', 'setupBannedEmailsTab')
       .addItem('📥 Import from External Banned List', 'importBannedListFromExternal')
       .addSeparator()
+      .addItem('📊 Setup Usage Tracking', 'setupUsageLogSheet')
+      .addItem('🗑️ Clear Old Usage Logs (90 days)', 'clearOldUsageLogs90Days')
+      .addSeparator()
       .addItem('🔍 Check Data Coverage', 'diagnosticCheckDataCoverage')
       .addItem('🔍 Check Excluded Orders', 'diagnosticCheckExcludedOrders'))
     .addToUi();
+}
+
+function clearOldUsageLogs90Days() {
+  return clearOldUsageLogs(90);
 }
 
 function onOpen() {
