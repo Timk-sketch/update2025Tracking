@@ -10,7 +10,7 @@ function loadBannedList_() {
   if (BANNED_LIST_CACHE_ !== null) return BANNED_LIST_CACHE_;
 
   if (!BANNED_ARCHIVE_ID) {
-    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set() };
+    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set(["dirtlegal.com"]) };
     return BANNED_LIST_CACHE_;
   }
 
@@ -19,12 +19,12 @@ function loadBannedList_() {
     const ss = SpreadsheetApp.openById(BANNED_ARCHIVE_ID);
     bannedSheet = ss.getSheetByName(BANNED_SHEET_NAME_PRIMARY) || ss.getSheetByName(BANNED_SHEET_NAME_FALLBACK);
   } catch (e) {
-    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set() };
+    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set(["dirtlegal.com"]) };
     return BANNED_LIST_CACHE_;
   }
 
   if (!bannedSheet) {
-    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set() };
+    BANNED_LIST_CACHE_ = { exact: new Set(), domains: new Set(["dirtlegal.com"]) };
     return BANNED_LIST_CACHE_;
   }
 
@@ -47,6 +47,9 @@ function loadBannedList_() {
         else domains.add(entry);
       });
     });
+
+  // Always exclude @dirtlegal.com emails (internal company domain)
+  domains.add("dirtlegal.com");
 
   BANNED_LIST_CACHE_ = { exact, domains };
   return BANNED_LIST_CACHE_;
