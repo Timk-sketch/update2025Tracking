@@ -236,6 +236,7 @@ function rebuildOrderToolsMenu() {
       .addItem('Build Clean Master Only', 'buildAllOrdersClean')
       .addSeparator()
       .addItem('🚫 Setup Banned_Emails Tab', 'setupBannedEmailsTab')
+      .addItem('🧹 Clean Banned Emails from All_Order_Clean', 'cleanBannedEmailsFromAllOrdersClean')
       .addItem('📥 Import from External Banned List', 'importBannedListFromExternal')
       .addSeparator()
       .addItem('📊 Setup Usage Tracking', 'setupUsageLogSheet')

@@ -203,7 +203,7 @@
       <button class="btn-warning" id="btnBanEmail" onclick="runBanEmail()">
         🚫 Add to Banned List
       </button>
-      <div class="help-text">After banning, rebuild All_Order_Clean to apply changes</div>
+      <div class="help-text">Automatically removes banned emails from All_Order_Clean</div>
     </div>
 
     <hr>
@@ -396,7 +396,19 @@
           .withSuccessHandler(res => {
             log(`✓ ${res}`);
             document.getElementById('banEmail').value = ''; // Clear input
-            disableAll_(false);
+
+            // Automatically clean All_Order_Clean
+            log('Cleaning banned emails from All_Order_Clean...');
+            google.script.run
+              .withSuccessHandler(cleanRes => {
+                log(`✓ ${cleanRes}`);
+                disableAll_(false);
+              })
+              .withFailureHandler(cleanErr => {
+                log(`⚠ Warning: ${cleanErr && cleanErr.message ? cleanErr.message : String(cleanErr)}`);
+                disableAll_(false);
+              })
+              .cleanBannedEmailsFromAllOrdersClean();
           })
           .withFailureHandler(err => {
             log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`);

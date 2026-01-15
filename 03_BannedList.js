@@ -165,7 +165,76 @@ function addToBannedList(emailOrDomain) {
   ss.toast(msg, "Banned List", 6);
   logImportEvent("Banned List", `Added: ${input}`);
 
+  // Optionally, clean existing All_Order_Clean data immediately
+  // Uncomment the next line if you want automatic cleaning:
+  // cleanBannedEmailsFromAllOrdersClean();
+
   return msg;
+}
+
+/**
+ * Removes all orders with banned emails from All_Order_Clean.
+ * This is faster than rebuilding the entire clean master.
+ */
+function cleanBannedEmailsFromAllOrdersClean() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const cleanSheet = ss.getSheetByName(CLEAN_OUTPUT_SHEET || 'All_Order_Clean');
+
+  if (!cleanSheet) {
+    return 'All_Order_Clean sheet not found.';
+  }
+
+  const lastRow = cleanSheet.getLastRow();
+  if (lastRow < 2) {
+    return 'All_Order_Clean is empty.';
+  }
+
+  // Load banned list
+  const banned = loadBannedList_();
+
+  // Read all data
+  const data = cleanSheet.getDataRange().getValues();
+  const headers = data[0];
+
+  // Find email column
+  const emailCol = headers.indexOf('customer_email_raw');
+  if (emailCol === -1) {
+    throw new Error('customer_email_raw column not found in All_Order_Clean');
+  }
+
+  // Filter out banned emails
+  const headerRow = [headers];
+  const cleanRows = [];
+  let removedCount = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const emailRaw = data[i][emailCol];
+
+    if (isBannedEmail_(emailRaw, banned)) {
+      removedCount++;
+      continue;
+    }
+
+    cleanRows.push(data[i]);
+  }
+
+  // Only rewrite if we removed something
+  if (removedCount > 0) {
+    cleanSheet.clearContents();
+    const allRows = headerRow.concat(cleanRows);
+    cleanSheet.getRange(1, 1, allRows.length, headers.length).setValues(allRows);
+
+    // Reapply formatting
+    cleanSheet.setFrozenRows(1);
+    cleanSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+
+    const msg = `✅ Removed ${removedCount} orders with banned emails from All_Order_Clean.`;
+    ss.toast(msg, 'Clean Banned Emails', 6);
+    logImportEvent('Clean Banned Emails', msg, removedCount);
+    return msg;
+  }
+
+  return 'No orders with banned emails found in All_Order_Clean.';
 }
 
 /**
