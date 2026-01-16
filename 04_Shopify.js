@@ -68,7 +68,7 @@ function fetchWithRetry_(url, options) {
         // fall through to retry
       } else {
         // Non-retryable - throw immediately with response content
-        throw new Error(`Shopify API error (${code}): ${resp.getContentText()}`);
+        throw new Error(`API error (${code}): ${resp.getContentText()}`);
       }
     } catch (e) {
       lastErr = e;

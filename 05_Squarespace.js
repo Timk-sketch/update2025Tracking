@@ -99,11 +99,13 @@ function importSquarespaceOrders() {
 
   do {
     let finalUrl;
-    if (page === 0) {
+    if (page === 0 || !cursor) {
+      // First page: use date parameters only (no cursor)
       finalUrl = endpoint + '?' +
         `modifiedAfter=${encodeURIComponent(modifiedAfter)}` +
         `&modifiedBefore=${encodeURIComponent(modifiedBefore)}`;
     } else {
+      // Subsequent pages: use cursor only (no date parameters)
       finalUrl = endpoint + `?cursor=${encodeURIComponent(cursor)}`;
     }
 
@@ -114,7 +116,7 @@ function importSquarespaceOrders() {
     });
 
     if (resp.getResponseCode() !== 200) {
-      throw new Error(`Squarespace API error (${resp.getResponseCode()}): ${resp.getContentText()}`);
+      throw new Error(`Squarespace Orders API error (${resp.getResponseCode()}): ${resp.getContentText()}`);
     }
 
     const json = JSON.parse(resp.getContentText());

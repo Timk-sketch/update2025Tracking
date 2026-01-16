@@ -203,15 +203,16 @@ function importSquarespaceRefunds(days) {
 
   const newRefunds = [];
   let cursor = null;
+  let pageNum = 0;
 
   do {
     let url;
-    if (cursor) {
-      // When using cursor, don't include date parameters
-      url = `https://api.squarespace.com/1.0/commerce/orders?cursor=${encodeURIComponent(cursor)}`;
-    } else {
-      // Only use date parameters on first request
+    if (pageNum === 0 || !cursor) {
+      // First page: use date parameters only (no cursor)
       url = `https://api.squarespace.com/1.0/commerce/orders?modifiedAfter=${encodeURIComponent(modAfterStr)}&modifiedBefore=${encodeURIComponent(modBeforeStr)}`;
+    } else {
+      // Subsequent pages: use cursor only (no date parameters)
+      url = `https://api.squarespace.com/1.0/commerce/orders?cursor=${encodeURIComponent(cursor)}`;
     }
 
     const resp = fetchWithRetry_(url, {
@@ -221,8 +222,10 @@ function importSquarespaceRefunds(days) {
     });
 
     if (resp.getResponseCode() !== 200) {
-      throw new Error(`Squarespace API error (${resp.getResponseCode()}): ${resp.getContentText()}`);
+      throw new Error(`Squarespace Refunds API error (${resp.getResponseCode()}): ${resp.getContentText()}`);
     }
+
+    pageNum++;
 
     const json = JSON.parse(resp.getContentText());
     const orders = json.result || [];

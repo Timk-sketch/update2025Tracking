@@ -13,24 +13,34 @@ function automatedImportAndUpdate() {
   logProgress('Automated Import', '📥 Step 1/6: Importing Shopify orders (last 14 days)...');
   const shopifyImportMsg = importShopifyOrders();
   steps.push('✓ Shopify Import: ' + shopifyImportMsg);
+  SpreadsheetApp.flush(); // Ensure writes complete before next operation
+  Utilities.sleep(1000); // Brief pause to reduce Sheets service load
 
   logProgress('Automated Import', '📥 Step 2/6: Importing Squarespace orders (last 14 days)...');
   const squarespaceImportMsg = importSquarespaceOrders();
   steps.push('✓ Squarespace Import: ' + squarespaceImportMsg);
+  SpreadsheetApp.flush();
+  Utilities.sleep(1000);
 
   // Step 2: Import refunds to dedicated sheets (last 90 days for automated triggers)
   logProgress('Automated Import', '🔄 Step 3/6: Importing Shopify refunds (last 90 days)...');
   const shopifyRefundMsg = importShopifyRefunds(90);
   steps.push('✓ Shopify Refunds: ' + shopifyRefundMsg);
+  SpreadsheetApp.flush();
+  Utilities.sleep(1000);
 
   logProgress('Automated Import', '🔄 Step 4/6: Importing Squarespace refunds (last 90 days)...');
   const squarespaceRefundMsg = importSquarespaceRefunds(90);
   steps.push('✓ Squarespace Refunds: ' + squarespaceRefundMsg);
+  SpreadsheetApp.flush();
+  Utilities.sleep(1000);
 
   // Step 3: Prepare data
   logProgress('Automated Import', '🧹 Step 5/6: Deduplicating orders...');
   deduplicateAllOrders();
   steps.push('✓ Deduplication complete');
+  SpreadsheetApp.flush();
+  Utilities.sleep(1000);
 
   logProgress('Automated Import', '📊 Step 6/6: Building clean master sheet...');
   buildAllOrdersClean();
