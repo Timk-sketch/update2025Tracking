@@ -18,13 +18,13 @@ function automatedImportAndUpdate() {
   const squarespaceImportMsg = importSquarespaceOrders();
   steps.push('✓ Squarespace Import: ' + squarespaceImportMsg);
 
-  // Step 2: Update existing orders with refunds (last 90 days)
-  logProgress('Automated Import', '🔄 Step 3/6: Checking Shopify refunds (last 90 days)...');
-  const shopifyRefundMsg = updateShopifyOrdersWithRefunds();
+  // Step 2: Import refunds to dedicated sheets (last 90 days for automated triggers)
+  logProgress('Automated Import', '🔄 Step 3/6: Importing Shopify refunds (last 90 days)...');
+  const shopifyRefundMsg = importShopifyRefunds(90);
   steps.push('✓ Shopify Refunds: ' + shopifyRefundMsg);
 
-  logProgress('Automated Import', '🔄 Step 4/6: Checking Squarespace refunds (last 90 days)...');
-  const squarespaceRefundMsg = updateSquarespaceOrdersWithRefunds();
+  logProgress('Automated Import', '🔄 Step 4/6: Importing Squarespace refunds (last 90 days)...');
+  const squarespaceRefundMsg = importSquarespaceRefunds(90);
   steps.push('✓ Squarespace Refunds: ' + squarespaceRefundMsg);
 
   // Step 3: Prepare data
@@ -49,24 +49,20 @@ function automatedBuildReports() {
 
   logProgress('Automated Reports', '📊 Starting automated report building...');
 
-  logProgress('Automated Reports', '📈 Step 1/4: Building summary report...');
+  logProgress('Automated Reports', '📈 Step 1/3: Building summary report...');
   buildOrdersSummaryReport();
   steps.push('✓ Summary report built');
 
-  logProgress('Automated Reports', '💰 Step 2/4: Building refunds report...');
-  buildRefundsReport();
-  steps.push('✓ Refunds report built');
-
-  logProgress('Automated Reports', '🏷️ Step 3/4: Building discounts report...');
+  logProgress('Automated Reports', '🏷️ Step 2/3: Building discounts report...');
   buildDiscountsReport();
   steps.push('✓ Discounts report built');
 
-  logProgress('Automated Reports', '📧 Step 4/4: Building customer outreach list...');
+  logProgress('Automated Reports', '📧 Step 3/3: Building customer outreach list...');
   buildCustomerOutreachList();
   steps.push('✓ Outreach list built');
 
   const msg = '✅ Part 2 Complete (All Reports)!\n\n' + steps.join('\n');
-  logProgress('Automated Reports', '✅ All 4 reports built!');
+  logProgress('Automated Reports', '✅ All 3 reports built!');
   logImportEvent('Automated Reports', 'Part 2: Report building finished', steps.length);
   return msg;
 }
@@ -89,13 +85,13 @@ function importAndUpdateAllOrders() {
   const squarespaceImportMsg = importSquarespaceOrders();
   steps.push('✓ Squarespace Import: ' + squarespaceImportMsg);
 
-  // Step 2: Update existing orders with refunds (last 90 days)
-  logProgress('Import & Update', '🔄 Step 3/8: Checking Shopify refunds (last 90 days)...');
-  const shopifyRefundMsg = updateShopifyOrdersWithRefunds();
+  // Step 2: Import refunds to dedicated sheets (last 90 days for ongoing updates)
+  logProgress('Import & Update', '🔄 Step 3/8: Importing Shopify refunds (last 90 days)...');
+  const shopifyRefundMsg = importShopifyRefunds(90);
   steps.push('✓ Shopify Refunds: ' + shopifyRefundMsg);
 
-  logProgress('Import & Update', '🔄 Step 4/8: Checking Squarespace refunds (last 90 days)...');
-  const squarespaceRefundMsg = updateSquarespaceOrdersWithRefunds();
+  logProgress('Import & Update', '🔄 Step 4/8: Importing Squarespace refunds (last 90 days)...');
+  const squarespaceRefundMsg = importSquarespaceRefunds(90);
   steps.push('✓ Squarespace Refunds: ' + squarespaceRefundMsg);
 
   // Step 3: Rebuild clean master and reports
@@ -107,24 +103,20 @@ function importAndUpdateAllOrders() {
   buildAllOrdersClean();
   steps.push('✓ Clean master built');
 
-  logProgress('Import & Update', '📈 Step 7/10: Building summary report...');
+  logProgress('Import & Update', '📈 Step 7/9: Building summary report...');
   buildOrdersSummaryReport();
   steps.push('✓ Summary report built');
 
-  logProgress('Import & Update', '💰 Step 8/10: Building refunds report...');
-  buildRefundsReport();
-  steps.push('✓ Refunds report built');
-
-  logProgress('Import & Update', '🏷️ Step 9/10: Building discounts report...');
+  logProgress('Import & Update', '🏷️ Step 8/9: Building discounts report...');
   buildDiscountsReport();
   steps.push('✓ Discounts report built');
 
-  logProgress('Import & Update', '📧 Step 10/10: Building customer outreach list...');
+  logProgress('Import & Update', '📧 Step 9/9: Building customer outreach list...');
   buildCustomerOutreachList();
   steps.push('✓ Outreach list built');
 
   const msg = '✅ Import & Update Complete!\n\n' + steps.join('\n');
-  logProgress('Import & Update', '✅ All 10 steps complete!');
+  logProgress('Import & Update', '✅ All 9 steps complete!');
   logImportEvent('Import & Update', 'Complete workflow finished', steps.length);
 
   // Log completion with duration
@@ -134,49 +126,69 @@ function importAndUpdateAllOrders() {
   return msg;
 }
 
-// NEW: Update-only function (for when you just want to check refunds without importing)
-// Checks API endpoints for refunds, updates raw sheets, then updates All_Order_Clean
-// Use case: Team member wants to verify a refund was processed
+// NEW: Update-only function (for when you just want to import refunds without full import)
+// Imports refunds to dedicated sheets (last 30 days - optimized for regular updates)
+// Refund sheets maintain complete history and duplicate checking ensures no data loss
+// Use case: Regular refund updates after initial historical import
 function updateAllOrdersWithRefunds() {
   const startTime = new Date();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const steps = [];
+  const days = 30; // Only check last 30 days for new refunds (faster for regular updates)
 
-  logProgress('Check Refunds', '🚀 Checking for new refunds...');
-  logUserAction('Check Refunds Only', 'Started refund check');
+  logProgress('Import Refunds', '🚀 Importing new refunds...');
+  logUserAction('Import Refunds Only', 'Started refund import');
 
-  // Step 1: Check Shopify API for refunds
-  logProgress('Check Refunds', '🔄 Step 1/5: Checking Shopify refunds (last 90 days)...');
-  const shopifyMsg = updateShopifyOrdersWithRefunds();
+  // Step 1: Import Shopify refunds
+  logProgress('Import Refunds', `🔄 Step 1/2: Importing Shopify refunds (last ${days} days)...`);
+  const shopifyMsg = importShopifyRefunds(days);
   steps.push('✓ Shopify: ' + shopifyMsg);
 
-  // Step 2: Check Squarespace API for refunds
-  logProgress('Check Refunds', '🔄 Step 2/5: Checking Squarespace refunds (last 90 days)...');
-  const squarespaceMsg = updateSquarespaceOrdersWithRefunds();
+  // Step 2: Import Squarespace refunds
+  logProgress('Import Refunds', `🔄 Step 2/2: Importing Squarespace refunds (last ${days} days)...`);
+  const squarespaceMsg = importSquarespaceRefunds(days);
   steps.push('✓ Squarespace: ' + squarespaceMsg);
 
-  // Step 3: Deduplicate raw sheets
-  logProgress('Check Refunds', '🧹 Step 3/5: Deduplicating orders...');
-  deduplicateAllOrders();
-  steps.push('✓ Deduplication complete');
-
-  // Step 4: Rebuild All_Order_Clean to reflect refund changes
-  logProgress('Check Refunds', '📊 Step 4/5: Updating All_Order_Clean...');
-  buildAllOrdersClean();
-  steps.push('✓ All_Order_Clean updated');
-
-  // Step 5: Post-build cleaning
-  logProgress('Check Refunds', '🧹 Step 5/5: Filtering banned emails/products...');
-  const cleanMsg = cleanBannedEmailsFromAllOrdersClean();
-  steps.push('✓ ' + cleanMsg);
-
-  const msg = '✅ Refund Check Complete!\n\n' + steps.join('\n') + '\n\nAll_Order_Clean is now up to date. Reports will reflect latest refund data.';
-  logProgress('Check Refunds', '✅ All 5 steps complete!');
-  logImportEvent('Check Refunds', 'Refund check and clean update complete', steps.length);
+  const msg = '✅ Refund Import Complete!\n\n' + steps.join('\n') + '\n\nRefund sheets are now up to date. Build reports to see latest refund data.';
+  logProgress('Import Refunds', '✅ Refund import complete!');
+  logImportEvent('Import Refunds', 'Refund import complete', steps.length);
 
   // Log completion with duration
   const duration = (new Date() - startTime) / 1000;
-  logUserAction('Check Refunds Only', `Completed: ${steps.length} steps`, 'Success', duration);
+  logUserAction('Import Refunds Only', `Completed: ${steps.length} steps`, 'Success', duration);
+
+  return msg;
+}
+
+// ONE-TIME: Import historical refunds (180 days) to populate refund sheets
+// This should be run once to establish the historical baseline
+// After this completes, use updateAllOrdersWithRefunds() for regular updates (30 days)
+function importHistoricalRefunds() {
+  const startTime = new Date();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const steps = [];
+  const days = 180; // Import last 180 days of historical refunds
+
+  logProgress('Historical Refund Import', '🚀 Importing historical refunds (one-time setup)...');
+  logUserAction('Import Historical Refunds', 'Started historical import');
+
+  // Step 1: Import Shopify refunds
+  logProgress('Historical Refund Import', `🔄 Step 1/2: Importing Shopify refunds (last ${days} days)...`);
+  const shopifyMsg = importShopifyRefunds(days);
+  steps.push('✓ Shopify: ' + shopifyMsg);
+
+  // Step 2: Import Squarespace refunds
+  logProgress('Historical Refund Import', `🔄 Step 2/2: Importing Squarespace refunds (last ${days} days)...`);
+  const squarespaceMsg = importSquarespaceRefunds(days);
+  steps.push('✓ Squarespace: ' + squarespaceMsg);
+
+  const msg = '✅ Historical Refund Import Complete!\n\n' + steps.join('\n') + '\n\nRefund sheets now contain 180 days of history.\nUse "Check Refunds Only" for regular updates going forward.';
+  logProgress('Historical Refund Import', '✅ Historical import complete!');
+  logImportEvent('Historical Refund Import', 'Historical import complete', steps.length);
+
+  // Log completion with duration
+  const duration = (new Date() - startTime) / 1000;
+  logUserAction('Import Historical Refunds', `Completed: ${steps.length} steps`, 'Success', duration);
 
   return msg;
 }
@@ -229,21 +241,9 @@ function cleanOrders() {
   return msg;
 }
 
-// LEGACY: Pipeline with full imports (now just calls the combined function)
-function runFullPipelineWithImports() {
-  return importAndUpdateAllOrders();
-}
-
-function runFullPipelineTightLast60Days() {
-  // Refresh last 60 days with append (faster, no full import)
-  refreshShopifyAdjustmentsLast60Days();
-  refreshSquarespaceAdjustmentsLast60Days();
-  deduplicateAllOrders();
-  buildAllOrdersClean();
-  buildOrdersSummaryReport();
-  buildCustomerOutreachList();
-  return "TIGHT pipeline complete (Refresh last 60 days → Dedup → Clean → Summary → Outreach)";
-}
+// REMOVED: Old pipeline functions that used deprecated Adjustments functions
+// - runFullPipelineWithImports() - replaced by importAndUpdateAllOrders()
+// - runFullPipelineTightLast60Days() - used old refreshShopifyAdjustmentsLast60Days() functions
 
 // MENU
 function showSidebar() {
@@ -270,11 +270,6 @@ function rebuildOrderToolsMenu() {
     .addSubMenu(ui.createMenu('⚙️ Admin / Setup')
       .addItem('📥 Import Shopify Orders Only', 'importShopifyOrders')
       .addItem('📥 Import Squarespace Orders Only', 'importSquarespaceOrders')
-      .addSeparator()
-      .addItem('Refresh Shopify Refunds (30 days)', 'refreshShopifyAdjustments')
-      .addItem('Refresh Shopify Refunds (60 days)', 'refreshShopifyAdjustmentsLast60Days')
-      .addItem('Refresh Squarespace Refunds (30 days)', 'refreshSquarespaceAdjustments')
-      .addItem('Refresh Squarespace Refunds (60 days)', 'refreshSquarespaceAdjustmentsLast60Days')
       .addSeparator()
       .addItem('Deduplicate All Orders', 'deduplicateAllOrders')
       .addItem('Build Clean Master Only', 'buildAllOrdersClean')

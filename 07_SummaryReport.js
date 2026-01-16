@@ -49,6 +49,14 @@ function buildOrdersSummaryReport() {
     order_net: mustColStrict_(hm, "order_net_revenue")
   };
 
+  // Load refunds from refund sheets (filtered by refund issue date)
+  logProgress('Summary Report', 'Loading refunds from refund sheets...');
+
+  const shopifyRefundsInPeriod = getShopifyRefundsForPeriod_(startDate, endDate);
+  const squarespaceRefundsInPeriod = getSquarespaceRefundsForPeriod_(startDate, endDate);
+
+  logProgress('Summary Report', `Found ${shopifyRefundsInPeriod.size} Shopify orders + ${squarespaceRefundsInPeriod.size} Squarespace orders with refunds in period`);
+
   const orderAgg = new Map();   // platform||orderId -> {grossLines, discount, refund, net, units}
   const byProduct = new Map();  // platform||product -> {units, revenue}
   const byCustomer = new Map(); // email -> { first, last, lifetimeRev, periodRev, hadBefore, hadInPeriod }
@@ -126,10 +134,19 @@ function buildOrdersSummaryReport() {
         o = { platform, orderId, grossLines: 0, discount: 0, refund: 0, net: 0, units: 0 };
         orderAgg.set(keyO, o);
 
-        // ✅ FIX: Only add order-level totals ONCE when we first see the order
+        // Only add order-level totals ONCE when we first see the order
         // These are order-level values that repeat for every line item in All_Orders_Clean
         o.discount = n_(row[COL.order_discount]);
-        o.refund = n_(row[COL.order_refund]);
+
+        // Get refund from refund sheets (filtered by refund issue date in period)
+        if (platform === "Shopify" && shopifyRefundsInPeriod.has(orderId)) {
+          o.refund = shopifyRefundsInPeriod.get(orderId);
+        } else if (platform === "Squarespace" && squarespaceRefundsInPeriod.has(orderId)) {
+          o.refund = squarespaceRefundsInPeriod.get(orderId);
+        } else {
+          o.refund = 0;
+        }
+
         o.net = n_(row[COL.order_net]);
       }
 
@@ -168,10 +185,42 @@ function buildOrdersSummaryReport() {
     s.orders += 1;
     s.gross += gross;
     s.discount += o.discount;
-    s.refund += o.refund;
+    // DON'T add o.refund here - we'll calculate total refunds by platform separately
+    // s.refund is set below from the refund sheets directly
     s.net += net;
     s.units += o.units;
   });
+
+  // Calculate total refunds by platform from refund sheets (ALL refunds issued in period)
+  // This is separate from order aggregation to catch refunds for orders outside the date range
+  let shopifyTotalRefunds = 0;
+  let squarespaceTotalRefunds = 0;
+
+  shopifyRefundsInPeriod.forEach(amount => {
+    shopifyTotalRefunds += amount;
+  });
+
+  squarespaceRefundsInPeriod.forEach(amount => {
+    squarespaceTotalRefunds += amount;
+  });
+
+  // Set refunds by source from refund sheets
+  if (bySource.has("Shopify")) {
+    bySource.get("Shopify").refund = shopifyTotalRefunds;
+  } else if (shopifyTotalRefunds > 0) {
+    // Create entry even if no orders in period, but there are refunds
+    bySource.set("Shopify", { orders: 0, gross: 0, discount: 0, refund: shopifyTotalRefunds, net: 0, units: 0 });
+  }
+
+  if (bySource.has("Squarespace")) {
+    bySource.get("Squarespace").refund = squarespaceTotalRefunds;
+  } else if (squarespaceTotalRefunds > 0) {
+    // Create entry even if no orders in period, but there are refunds
+    bySource.set("Squarespace", { orders: 0, gross: 0, discount: 0, refund: squarespaceTotalRefunds, net: 0, units: 0 });
+  }
+
+  // Recalculate total refunds from refund sheets
+  refundTotalPeriod = shopifyTotalRefunds + squarespaceTotalRefunds;
 
   const aovGross = totalOrdersAllSources > 0 ? (grossRevenuePeriod / totalOrdersAllSources) : 0;
   const aovNet = totalOrdersAllSources > 0 ? (netRevenuePeriod / totalOrdersAllSources) : 0;

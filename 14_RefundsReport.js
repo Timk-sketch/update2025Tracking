@@ -1,14 +1,14 @@
 // =====================================================
 // 14_RefundsReport.js — Refunds Report
 // Pulls all orders with refunds for the selected date range
-// Uses All_Order_Clean sheet for accurate data
+// Uses refund sheets for accurate refund date filtering
 // =====================================================
 
 /**
  * Builds a Refunds report for the current date range.
- * Queries Shopify API directly to filter by REFUND ISSUE DATE (not order date).
+ * Uses refund sheets to filter by REFUND ISSUE DATE (not order date).
  * This matches how Shopify Analytics reports refunds.
- * For Squarespace, falls back to All_Order_Clean (order date filtering).
+ * Both Shopify and Squarespace use refund sheets for accurate dates.
  */
 function buildRefundsReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -68,264 +68,136 @@ function buildRefundsReport() {
   const refundedOrders = [];
 
   // ==========================================
-  // PART 1: Fetch Shopify refunds from API (filtered by refund issue date)
+  // PART 1: Load refunds from refund sheets (filtered by refund issue date)
   // ==========================================
-  logProgress('Refunds Report', 'Fetching Shopify refunds from API...');
+  logProgress('Refunds Report', 'Loading refunds from refund sheets...');
 
-  const apiKey = PROPS.getProperty('SHOPIFY_API_KEY');
-  const shopDomain = PROPS.getProperty('SHOPIFY_SHOP_DOMAIN');
-  const apiVersion = '2023-10';
+  const shopifyRefundsInPeriod = getShopifyRefundsForPeriod_(start, end);
+  const squarespaceRefundsInPeriod = getSquarespaceRefundsForPeriod_(start, end);
 
-  logProgress('Refunds Report', `API Config: shopDomain=${shopDomain ? 'SET' : 'NOT SET'}, apiKey=${apiKey ? 'SET (length=' + apiKey.length + ')' : 'NOT SET'}`);
+  logProgress('Refunds Report', `Found ${shopifyRefundsInPeriod.size} Shopify + ${squarespaceRefundsInPeriod.size} Squarespace orders with refunds in period`);
 
-  if (apiKey && shopDomain) {
-    // Query orders updated in last 180 days, then filter refunds by issue date
-    const d = new Date();
-    d.setDate(d.getDate() - 180);
-    const updatedAtMin = d.toISOString();
+  // ==========================================
+  // PART 2: Get line item details from All_Order_Clean
+  // ==========================================
+  const cleanSheet = ss.getSheetByName(CLEAN_OUTPUT_SHEET || 'All_Order_Clean');
+  if (!cleanSheet) {
+    throw new Error('All_Order_Clean sheet not found. Please build the clean master first.');
+  }
 
-    const shopifyOrdersWithRefunds = new Map(); // orderId -> order data
-    const financialStatuses = ['refunded', 'partially_refunded'];
-    let totalOrdersFetched = 0;
-    let totalOrdersWithRefundArray = 0;
+  const cleanData = cleanSheet.getDataRange().getValues();
+  if (cleanData.length <= 1) {
+    // No data, just headers
+    refundsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    refundsSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#4285f4').setFontColor('#ffffff');
+    refundsSheet.getRange(2, 1).setValue('No orders found in All_Order_Clean.');
+    return 'No orders found in All_Order_Clean.';
+  }
 
-    for (const status of financialStatuses) {
-      let url = `https://${shopDomain}/admin/api/${apiVersion}/orders.json?status=any&financial_status=${status}&limit=250&updated_at_min=${encodeURIComponent(updatedAtMin)}`;
+  const cleanHeaders = cleanData[0].map(h => String(h || '').trim());
 
-      while (url) {
-        const resp = fetchWithRetry_(url, {
-          method: "get",
-          headers: { "X-Shopify-Access-Token": apiKey },
-          muteHttpExceptions: true
-        });
+  // Find column indices
+  const colPlatform = cleanHeaders.indexOf('platform');
+  const colOrderId = cleanHeaders.indexOf('order_id');
+  const colOrderNumber = cleanHeaders.indexOf('order_number');
+  const colOrderDate = cleanHeaders.indexOf('order_date');
+  const colEmailRaw = cleanHeaders.indexOf('customer_email_raw');
+  const colCustomerName = cleanHeaders.indexOf('customer_name');
+  const colProductName = cleanHeaders.indexOf('product_name');
+  const colSku = cleanHeaders.indexOf('sku');
+  const colQuantity = cleanHeaders.indexOf('quantity');
+  const colUnitPrice = cleanHeaders.indexOf('unit_price');
+  const colLineRevenue = cleanHeaders.indexOf('line_revenue');
+  const colOrderDiscountTotal = cleanHeaders.indexOf('order_discount_total');
+  const colOrderRefundTotal = cleanHeaders.indexOf('order_refund_total');
+  const colOrderNetRevenue = cleanHeaders.indexOf('order_net_revenue');
+  const colCurrency = cleanHeaders.indexOf('currency');
+  const colFinancialStatus = cleanHeaders.indexOf('financial_status');
+  const colFulfillmentStatus = cleanHeaders.indexOf('fulfillment_status');
 
-        if (resp.getResponseCode() !== 200) {
-          throw new Error(`Shopify API error (${resp.getResponseCode()}): ${resp.getContentText()}`);
+  // Get refund dates from refund sheets
+  const refundDates = new Map(); // orderId -> earliest refund date in range
+
+  const shopifyRefundsSheet = ss.getSheetByName(SHOPIFY_REFUNDS_SHEET_NAME);
+  if (shopifyRefundsSheet && shopifyRefundsSheet.getLastRow() > 1) {
+    const refundData = shopifyRefundsSheet.getDataRange().getValues();
+    const refundHeaders = refundData[0];
+    const refOrderIdCol = refundHeaders.indexOf('Order ID');
+    const refDateCol = refundHeaders.indexOf('Refund Date');
+
+    for (let r = 1; r < refundData.length; r++) {
+      const orderId = String(refundData[r][refOrderIdCol] || '');
+      const refundDate = asDate_(refundData[r][refDateCol]);
+
+      if (orderId && refundDate && refundDate >= start && refundDate <= end) {
+        const existing = refundDates.get(orderId);
+        if (!existing || refundDate < existing) {
+          refundDates.set(orderId, refundDate);
         }
-
-        const json = JSON.parse(resp.getContentText());
-        const orders = json.orders || [];
-        if (!orders.length) break;
-
-        totalOrdersFetched += orders.length;
-        logProgress('Refunds Report', `Fetched ${orders.length} orders with status=${status} (total: ${totalOrdersFetched})`);
-
-        orders.forEach(order => {
-          // Debug: Check if refunds array exists
-          if (order.refunds && order.refunds.length > 0) {
-            totalOrdersWithRefundArray++;
-          }
-
-          // Check if this order has refunds issued in our date range
-          if (!order.refunds || !order.refunds.length) return;
-
-          let hasRefundInRange = false;
-          order.refunds.forEach(ref => {
-            const refundDate = asDate_(ref.created_at);
-            if (refundDate && refundDate >= start && refundDate <= end) {
-              hasRefundInRange = true;
-            }
-          });
-
-          if (hasRefundInRange) {
-            shopifyOrdersWithRefunds.set(String(order.id), order);
-          }
-        });
-
-        // Handle pagination
-        const linkHeader = resp.getHeaders()['Link'] || resp.getHeaders()['link'] || '';
-        const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-        url = nextMatch ? nextMatch[1] : null;
-
-        if (url) Utilities.sleep(500); // Rate limit protection
       }
     }
+  }
 
-    logProgress('Refunds Report', `API returned ${totalOrdersFetched} orders, ${totalOrdersWithRefundArray} have refunds array, ${shopifyOrdersWithRefunds.size} have refunds in date range (${startDate} to ${endDate})`);
+  const squarespaceRefundsSheet = ss.getSheetByName(SQUARESPACE_REFUNDS_SHEET_NAME);
+  if (squarespaceRefundsSheet && squarespaceRefundsSheet.getLastRow() > 1) {
+    const refundData = squarespaceRefundsSheet.getDataRange().getValues();
+    const refundHeaders = refundData[0];
+    const refOrderIdCol = refundHeaders.indexOf('Order ID');
+    const refDateCol = refundHeaders.indexOf('Refund Date');
 
-    // ==========================================
-    // PART 2: Get line item details from All_Order_Clean for Shopify orders
-    // ==========================================
-    const cleanSheet = ss.getSheetByName(CLEAN_OUTPUT_SHEET || 'All_Order_Clean');
-    if (!cleanSheet) {
-      throw new Error('All_Order_Clean sheet not found. Please build the clean master first.');
-    }
+    for (let r = 1; r < refundData.length; r++) {
+      const orderId = String(refundData[r][refOrderIdCol] || '');
+      const refundDate = asDate_(refundData[r][refDateCol]);
 
-    const cleanData = cleanSheet.getDataRange().getValues();
-    if (cleanData.length <= 1) {
-      // No data, just headers
-      refundsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      refundsSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#4285f4').setFontColor('#ffffff');
-      refundsSheet.getRange(2, 1).setValue('No orders found in All_Order_Clean.');
-      return 'No orders found in All_Order_Clean.';
-    }
-
-    const cleanHeaders = cleanData[0].map(h => String(h || '').trim());
-
-    // Find column indices
-    const colPlatform = cleanHeaders.indexOf('platform');
-    const colOrderId = cleanHeaders.indexOf('order_id');
-    const colOrderNumber = cleanHeaders.indexOf('order_number');
-    const colOrderDate = cleanHeaders.indexOf('order_date');
-    const colEmailRaw = cleanHeaders.indexOf('customer_email_raw');
-    const colCustomerName = cleanHeaders.indexOf('customer_name');
-    const colProductName = cleanHeaders.indexOf('product_name');
-    const colSku = cleanHeaders.indexOf('sku');
-    const colQuantity = cleanHeaders.indexOf('quantity');
-    const colUnitPrice = cleanHeaders.indexOf('unit_price');
-    const colLineRevenue = cleanHeaders.indexOf('line_revenue');
-    const colOrderDiscountTotal = cleanHeaders.indexOf('order_discount_total');
-    const colOrderRefundTotal = cleanHeaders.indexOf('order_refund_total');
-    const colOrderNetRevenue = cleanHeaders.indexOf('order_net_revenue');
-    const colCurrency = cleanHeaders.indexOf('currency');
-    const colFinancialStatus = cleanHeaders.indexOf('financial_status');
-    const colFulfillmentStatus = cleanHeaders.indexOf('fulfillment_status');
-
-    // Process each row
-    for (let r = 1; r < cleanData.length; r++) {
-      const row = cleanData[r];
-      const platform = row[colPlatform] || '';
-      const orderId = String(row[colOrderId] || '');
-
-      // SHOPIFY: Only include if order has refund in our date range (from API)
-      if (platform === 'Shopify') {
-        if (!shopifyOrdersWithRefunds.has(orderId)) continue;
-
-        // Get earliest refund date in range for this order
-        const order = shopifyOrdersWithRefunds.get(orderId);
-        let earliestRefundDate = null;
-        if (order.refunds) {
-          order.refunds.forEach(ref => {
-            const refundDate = asDate_(ref.created_at);
-            if (refundDate && refundDate >= start && refundDate <= end) {
-              if (!earliestRefundDate || refundDate < earliestRefundDate) {
-                earliestRefundDate = refundDate;
-              }
-            }
-          });
+      if (orderId && refundDate && refundDate >= start && refundDate <= end) {
+        const existing = refundDates.get(orderId);
+        if (!existing || refundDate < existing) {
+          refundDates.set(orderId, refundDate);
         }
-
-        const orderDate = asDate_(row[colOrderDate]);
-        const refundTotal = parseFloat(row[colOrderRefundTotal]) || 0;
-
-        refundedOrders.push([
-          platform,
-          orderId,
-          row[colOrderNumber] || '',
-          orderDate,
-          earliestRefundDate || orderDate, // Refund date
-          row[colEmailRaw] || '',
-          row[colCustomerName] || '',
-          row[colProductName] || '',
-          row[colSku] || '',
-          parseFloat(row[colQuantity]) || 0,
-          parseFloat(row[colUnitPrice]) || 0,
-          parseFloat(row[colLineRevenue]) || 0,
-          parseFloat(row[colOrderDiscountTotal]) || 0,
-          refundTotal,
-          parseFloat(row[colOrderNetRevenue]) || 0,
-          row[colCurrency] || '',
-          row[colFinancialStatus] || '',
-          row[colFulfillmentStatus] || ''
-        ]);
-      }
-
-      // SQUARESPACE: Use order date filtering (no API support for refund dates)
-      if (platform === 'Squarespace') {
-        const orderDate = asDate_(row[colOrderDate]);
-        if (!orderDate || orderDate < start || orderDate > end) continue;
-
-        const refundTotal = parseFloat(row[colOrderRefundTotal]) || 0;
-        if (refundTotal <= 0) continue;
-
-        refundedOrders.push([
-          platform,
-          orderId,
-          row[colOrderNumber] || '',
-          orderDate,
-          orderDate, // Use order date as refund date (best we can do for Squarespace)
-          row[colEmailRaw] || '',
-          row[colCustomerName] || '',
-          row[colProductName] || '',
-          row[colSku] || '',
-          parseFloat(row[colQuantity]) || 0,
-          parseFloat(row[colUnitPrice]) || 0,
-          parseFloat(row[colLineRevenue]) || 0,
-          parseFloat(row[colOrderDiscountTotal]) || 0,
-          refundTotal,
-          parseFloat(row[colOrderNetRevenue]) || 0,
-          row[colCurrency] || '',
-          row[colFinancialStatus] || '',
-          row[colFulfillmentStatus] || ''
-        ]);
       }
     }
-  } else {
-    logProgress('Refunds Report', 'Shopify API not configured, using All_Order_Clean with order date filtering...');
+  }
 
-    // Fallback: Use All_Order_Clean with order date filtering (old behavior)
-    const cleanSheet = ss.getSheetByName(CLEAN_OUTPUT_SHEET || 'All_Order_Clean');
-    if (!cleanSheet) {
-      throw new Error('All_Order_Clean sheet not found. Please build the clean master first.');
+  // Process each row from All_Order_Clean
+  for (let r = 1; r < cleanData.length; r++) {
+    const row = cleanData[r];
+    const platform = row[colPlatform] || '';
+    const orderId = String(row[colOrderId] || '');
+
+    // Check if this order has a refund in the period (from refund sheets)
+    let hasRefund = false;
+    if (platform === 'Shopify') {
+      hasRefund = shopifyRefundsInPeriod.has(orderId);
+    } else if (platform === 'Squarespace') {
+      hasRefund = squarespaceRefundsInPeriod.has(orderId);
     }
 
-    const cleanData = cleanSheet.getDataRange().getValues();
-    if (cleanData.length <= 1) {
-      refundsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      refundsSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#4285f4').setFontColor('#ffffff');
-      refundsSheet.getRange(2, 1).setValue('No orders found in All_Order_Clean.');
-      return 'No orders found in All_Order_Clean.';
-    }
+    if (!hasRefund) continue;
 
-    const cleanHeaders = cleanData[0].map(h => String(h || '').trim());
+    const orderDate = asDate_(row[colOrderDate]);
+    const refundDate = refundDates.get(orderId) || orderDate;
+    const refundTotal = (platform === 'Shopify' ? shopifyRefundsInPeriod.get(orderId) : squarespaceRefundsInPeriod.get(orderId)) || 0;
 
-    const colPlatform = cleanHeaders.indexOf('platform');
-    const colOrderId = cleanHeaders.indexOf('order_id');
-    const colOrderNumber = cleanHeaders.indexOf('order_number');
-    const colOrderDate = cleanHeaders.indexOf('order_date');
-    const colEmailRaw = cleanHeaders.indexOf('customer_email_raw');
-    const colCustomerName = cleanHeaders.indexOf('customer_name');
-    const colProductName = cleanHeaders.indexOf('product_name');
-    const colSku = cleanHeaders.indexOf('sku');
-    const colQuantity = cleanHeaders.indexOf('quantity');
-    const colUnitPrice = cleanHeaders.indexOf('unit_price');
-    const colLineRevenue = cleanHeaders.indexOf('line_revenue');
-    const colOrderDiscountTotal = cleanHeaders.indexOf('order_discount_total');
-    const colOrderRefundTotal = cleanHeaders.indexOf('order_refund_total');
-    const colOrderNetRevenue = cleanHeaders.indexOf('order_net_revenue');
-    const colCurrency = cleanHeaders.indexOf('currency');
-    const colFinancialStatus = cleanHeaders.indexOf('financial_status');
-    const colFulfillmentStatus = cleanHeaders.indexOf('fulfillment_status');
-
-    for (let r = 1; r < cleanData.length; r++) {
-      const row = cleanData[r];
-      const orderDate = asDate_(row[colOrderDate]);
-      if (!orderDate || orderDate < start || orderDate > end) continue;
-
-      const refundTotal = parseFloat(row[colOrderRefundTotal]) || 0;
-      if (refundTotal <= 0) continue;
-
-      refundedOrders.push([
-        row[colPlatform] || '',
-        row[colOrderId] || '',
-        row[colOrderNumber] || '',
-        orderDate,
-        orderDate, // Refund date = order date (fallback)
-        row[colEmailRaw] || '',
-        row[colCustomerName] || '',
-        row[colProductName] || '',
-        row[colSku] || '',
-        parseFloat(row[colQuantity]) || 0,
-        parseFloat(row[colUnitPrice]) || 0,
-        parseFloat(row[colLineRevenue]) || 0,
-        parseFloat(row[colOrderDiscountTotal]) || 0,
-        refundTotal,
-        parseFloat(row[colOrderNetRevenue]) || 0,
-        row[colCurrency] || '',
-        row[colFinancialStatus] || '',
-        row[colFulfillmentStatus] || ''
-      ]);
-    }
+    refundedOrders.push([
+      platform,
+      orderId,
+      row[colOrderNumber] || '',
+      orderDate,
+      refundDate,
+      row[colEmailRaw] || '',
+      row[colCustomerName] || '',
+      row[colProductName] || '',
+      row[colSku] || '',
+      parseFloat(row[colQuantity]) || 0,
+      parseFloat(row[colUnitPrice]) || 0,
+      parseFloat(row[colLineRevenue]) || 0,
+      parseFloat(row[colOrderDiscountTotal]) || 0,
+      refundTotal,
+      parseFloat(row[colOrderNetRevenue]) || 0,
+      row[colCurrency] || '',
+      row[colFinancialStatus] || '',
+      row[colFulfillmentStatus] || ''
+    ]);
   }
 
   // Write to sheet

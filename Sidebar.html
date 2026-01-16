@@ -51,10 +51,17 @@
     </div>
 
     <div class="row">
+      <button id="btnHistoricalRefunds" onclick="runFn('importHistoricalRefunds')" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        📥 Import Historical Refunds (One-Time)
+      </button>
+      <div class="help-text">⚠️ Run once: Import last 180 days of refunds to populate history</div>
+    </div>
+
+    <div class="row">
       <button id="btnUpdateOnly" onclick="runFn('updateAllOrdersWithRefunds')">
         🔄 Check Refunds Only
       </button>
-      <div class="help-text">Skip import, just check for new refunds (last 90 days)</div>
+      <div class="help-text">Import new refunds from last 30 days (sheet keeps full history)</div>
     </div>
 
     <div class="row">
@@ -164,13 +171,6 @@
         📊 Build Summary Report
       </button>
       <div class="help-text">Uses the date range and marketing controls above</div>
-    </div>
-
-    <div class="row">
-      <button class="btn-secondary" id="btnRefunds" onclick="runBuildRefunds()">
-        💰 Build Refunds Report
-      </button>
-      <div class="help-text">Shows all refunded orders for the date range above</div>
     </div>
 
     <div class="row">
@@ -295,31 +295,6 @@
               .withSuccessHandler(r => { log(`✓ ${r || 'Orders Summary built.'}`); disableAll_(false); })
               .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
               .buildOrdersSummaryReport();
-          })
-          .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
-          .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
-      }
-
-      function runBuildRefunds() {
-        const preset = getPreset_();
-        const start = getStart_();
-        const end = getEnd_();
-
-        if (preset === 'custom' && (!start || !end)) {
-          log('✗ ERROR: Custom range requires Start Date + End Date.');
-          return;
-        }
-
-        log('Building Refunds Report (sets date range first)...');
-        disableAll_(true);
-
-        google.script.run
-          .withSuccessHandler(function(res) {
-            log(`✓ ${res}`);
-            google.script.run
-              .withSuccessHandler(r => { log(`✓ ${r || 'Refunds Report built.'}`); disableAll_(false); })
-              .withFailureHandler(e => { log(`✗ ERROR: ${e && e.message ? e.message : String(e)}`); disableAll_(false); })
-              .buildRefundsReport();
           })
           .withFailureHandler(err => { log(`✗ ERROR: ${err && err.message ? err.message : String(err)}`); disableAll_(false); })
           .setOrdersSummaryDateRangeFromSidebar(preset, start, end);
